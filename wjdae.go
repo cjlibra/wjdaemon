@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -79,7 +80,50 @@ func SocketServer(sockport string) {
 	}
 
 }
-
+func foundserialinpoolbynum(serialnum []byte) int{
+	for index ,value := range linesinfos {
+		if value.FirmSerialno == serialnum[:6] {
+			return index
+		}
+	}
+	return -1
+}
+func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	FirmSerial := r.FormValue("FirmSerial")
+	if len(r.Form["FirmSerial"]) <= 0 {
+		glog.V(3).Infoln("FirmSerial请求参数缺失")
+		w.Write([]byte("{status:'1001'}"))
+		return
+	}
+	if len(FirmSerial) <= 0 {
+		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
+		w.Write([]byte("{status:'1002'}"))
+		return
+	}
+	binFirmSerial, err := hex.DecodeString(FirmSerial)
+	if err != nil {
+		glog.V(3).Infoln("FirmSerial DecodeString出错")
+		w.Write([]byte("{status:'1003'}"))
+		return
+	}
+	if bytes.Equal(oneStrucPack.FirmSerailno[:6] ,binFirmSerial[:6]) != true {
+		glog.V(3).Infoln("找不到Firmserialno")
+		w.Write([]byte("{status:'1004'}"))
+		return
+	}
+	b, err := json.Marshal(oneStrucPack)
+	if err != nil {
+		glog.V(2).Infoln("json编码问题" ，err)
+		w.Write([]byte("{status:'1005'}"))
+		return
+	}
+	 
+	glog.V(2).Infoln(string(b))
+	w.Write(b)
+	
+	
+}
 func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	FirmSerial := r.FormValue("FirmSerial")
@@ -99,10 +143,42 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
+	poolgetnum :=foundserialinpoolbynum(binFirmSerial)
+	if poolgetnum == -1 {
+		glog.V(3).Infoln("客户端未连接上来")
+		w.Write([]byte("{status:'1004'}"))
+		return
+	}
+	buffer_getparm := make([]byte , 1024)
+	buffer_getparm[0] = 0xEE
+	buffer_getparm[1] = 0x80
+	copy(buffer_getparm[2:2+6] , binFirmSerial[:6])
+	buffer_getparm[9] = 0
+	buffer_getparm[10] = CalcChecksum(buffer_getparm,11)
+	
+	
+	sendcount ,err := linesinfos[poolgetnum].Conn.Write(buffer_getparm[:11])
+	if err != nil {
+		glog.V(3).Infoln("无法发送0x80数据包" ，buffer_getparm[:11])
+		w.Write([]byte("{status:'1005'}"))
+		return
+	}
 	
 
+    glog.V(3).Infoln("成功发送0x80数据包" ，buffer_getparm[:11])
+	w.Write([]byte("{status:'0'}"))
+	return
 }
 
+func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
+	
+	
+}
+
+func setparmtofront(w http.ResponseWriter, r *http.Request) {
+	
+	
+}
 func main() {
 
 	sockport := flag.Int("p", 48080, "socket server port")
@@ -111,7 +187,11 @@ func main() {
 
 	go SocketServer(fmt.Sprintf("%d", *sockport))
 
+    http.HandleFunc("/getparmfromfrontafter", getparmfromfrontafter)
 	http.HandleFunc("/getparmfromfront", getparmfromfront)
+	
+	http.HandleFunc("/setparmtofrontafter", setparmtofrontafter)
+	http.HandleFunc("/setparmtofront", setparmtofront)
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
 	glog.Info("WEB程序启动，开始监听" + fmt.Sprintf("%d", *webport) + "端口")
@@ -155,7 +235,32 @@ type PackageStruct struct {
 	OtherStatus      string
 	//CloseBit         byte
 }
-
+var oneStrucPack PackageStruct
+func DealWithParmGet(buffer []byte,n int) int {
+	CMDchar := buffer[1]
+	if CMDchar != 0x00 {
+		return 1
+	}
+	
+	
+	oneStrucPack.CMDchar = buffer[1]
+	oneStrucPack.FirmSerailno = string(buffer[2 : 2+6])
+	oneStrucPack.EquipID = string(buffer[10 : 10+30])
+	oneStrucPack.PhoneNum = string(buffer[40 : 40+11])
+	oneStrucPack.SysEnergy = buffer[40+11]
+	oneStrucPack.ConnStatus = buffer[40+11+1]
+	oneStrucPack.ReadWriterStatus = buffer[53]
+	oneStrucPack.FirmVersion = string(buffer[54 : 54+3])
+	oneStrucPack.SoftVersion = string(buffer[57 : 57+3])
+	oneStrucPack.OutsideAntena = buffer[60]
+	oneStrucPack.InsideAntena = buffer[61]
+	oneStrucPack.ServerIpPort = string(buffer[62 : 62+6])
+	oneStrucPack.OtherStatus = string(buffer[68 : 68+5])
+	
+	
+	return 0
+	
+}
 func DealWithBeatHeart(buffer []byte, n int) int {
 	CMDchar := buffer[1]
 	if CMDchar != 0x01 {
@@ -221,6 +326,7 @@ func handleConnection(conn net.Conn) {
 			continue
 		}
 		DealWithBeatHeart(buffer, n)
+		DealWithParmGet(buffer,n)
 
 	}
 }
