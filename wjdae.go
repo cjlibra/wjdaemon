@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
@@ -89,6 +92,133 @@ func foundserialinpoolbynum(serialnum []byte) int {
 		}
 	}
 	return -1
+}
+
+type UPDATETASK struct {
+	FirmSerial    [6]byte
+	Procedure     int
+	FirmFileCount int
+	PartPercent   int
+	DoTime        time.Time
+	ReportChan    chan int
+}
+
+// 获取文件大小的接口
+type Size interface {
+	Size() int64
+}
+
+var updatefirmtasks []UPDATETASK
+
+func searchtask(FirmSerial []byte) int {
+	for index, value := range updatefirmtasks {
+		if bytes.Equal(value.FirmSerial[:6], FirmSerial[:6]) == true {
+			return index
+		}
+	}
+
+	return -1
+}
+
+func updatefirm(w http.ResponseWriter, r *http.Request) {
+	r.ParseMultipartForm(32 << 20)
+	//r.ParseForm()
+	FirmSerial := r.FormValue("FirmSerial")
+	if len(r.Form["FirmSerial"]) <= 0 {
+		glog.V(3).Infoln("FirmSerial请求参数缺失")
+		w.Write([]byte("{status:'1001'}"))
+		return
+	}
+	if len(FirmSerial) <= 0 {
+		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
+		w.Write([]byte("{status:'1002'}"))
+		return
+	}
+	binFirmSerial, err := hex.DecodeString(FirmSerial)
+	if err != nil {
+		glog.V(3).Infoln("FirmSerial DecodeString出错")
+		w.Write([]byte("{status:'1003'}"))
+		return
+	}
+
+	if "POST" != r.Method {
+		w.Write([]byte("{status:'1004'}"))
+		return
+	}
+	file, filehandle, err := r.FormFile("firmfile")
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	defer file.Close()
+	firmbuf := make([]byte, 1024*1024)
+	firmnum, err := file.Read(firmbuf)
+	if err != nil {
+		glog.V(3).Infoln("Firm文件读取失败")
+		w.Write([]byte("{status:'1005'}"))
+		return
+	}
+	var oneupdatefirmtask UPDATETASK
+	copy(oneupdatefirmtask.FirmSerial[:6], binFirmSerial[:6])
+	oneupdatefirmtask.Procedure = 1
+	if sizeInterface, ok := file.(Size); ok {
+		oneupdatefirmtask.FirmFileCount = sizeInterface.Size()
+	}
+	oneupdatefirmtask.PartPercent = 0
+	oneupdatefirmtask.DoTime = time.Now()
+	no := searchtask(binFirmSerial)
+	if no == -1{
+		updatefirmtasks = append(updatefirmtasks，oneupdatefirmtask)
+	}else{
+		updatefirmtasks[no].DoTime = time.Now()
+		updatefirmtasks[no].FirmFileCount =  oneupdatefirmtask.FirmFileCount
+		updatefirmtasks[no].PartPercent = oneupdatefirmtask.PartPercent
+		updatefirmtasks[no].Procedure = oneupdatefirmtask.Procedure
+	 	
+	}
+	poolgetnum := foundserialinpoolbynum(binFirmSerial)
+	if poolgetnum == -1 {
+		glog.V(3).Infoln("客户端未连接上来")
+		w.Write([]byte("{status:'1004'}"))
+		return
+	}
+	framenum := 0
+	framenum = firmnum/50
+	btmp := make([]byte, 2)
+	binary.LittleEndian.PutUint16(btmp, uint16(framenum))
+	
+	buffer_updateparm := make([]byte,256)
+	buffer_updateparm[0] = 0xEE
+	buffer_updateparm[1] = 0x83
+	copy(buffer_updateparm[2:2+6], binFirmSerial[:6])
+	buffer_updateparm[8] = 0
+	buffer_updateparm[9] = 7
+	buffer_updateparm[10] =  btmp[1]
+	buffer_updateparm[11] =  btmp[0]
+	buffer_updateparm[12] = CalcChecksum(firmbuf, firmnum+1)
+	buffer_updateparm[13] = 0
+	buffer_updateparm[14] = 0
+	buffer_updateparm[15] = 0
+	buffer_updateparm[16] = 0
+	buffer_updateparm[17] = 0 //close
+	buffer_updateparm[18] = CalcChecksum(buffer_updateparm,19)
+	
+	
+	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_updateparm[:19])
+	if err != nil {
+		glog.V(3).Infoln("无法发送0x83数据包", buffer_setparm[:19], sendcount)
+		w.Write([]byte("{status:'1005'}"))
+		return
+	}
+    
+	go updatefirmstart(poolgetnum )
+	glog.V(3).Infoln("成功发送0x83数据包", buffer_setparm[:19], sendcount)
+	w.Write([]byte("{status:'0'}"))
+	return
+}
+func updatefirmstart(poolgetnum  int ){
+	
+	
 }
 func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
@@ -335,6 +465,7 @@ func main() {
 
 	go SocketServer(fmt.Sprintf("%d", *sockport))
 
+	http.HandleFunc("/updatefirm", updatefirm)
 	http.HandleFunc("/getparmfromfrontafter", getparmfromfrontafter)
 	http.HandleFunc("/getparmfromfront", getparmfromfront)
 
