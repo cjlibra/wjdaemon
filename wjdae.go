@@ -95,12 +95,15 @@ func foundserialinpoolbynum(serialnum []byte) int {
 }
 
 type UPDATETASK struct {
-	FirmSerial    [6]byte
-	Procedure     int
-	FirmFileCount int
-	PartPercent   int
-	DoTime        time.Time
-	ReportChan    chan int
+	FirmSerial     [6]byte
+	Procedure      int
+	FirmFileCount  int
+	FirmFileBuf    []byte
+	AllFramesCount int
+	PartPercent    int
+	WholeChecksum  byte
+	DoTime         time.Time
+	ReportChan     chan int
 }
 
 // 获取文件大小的接口
@@ -159,22 +162,28 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var oneupdatefirmtask UPDATETASK
+	oneupdatefirmtask.FirmFileBuf = firmbuf
+
 	copy(oneupdatefirmtask.FirmSerial[:6], binFirmSerial[:6])
 	oneupdatefirmtask.Procedure = 1
 	if sizeInterface, ok := file.(Size); ok {
 		oneupdatefirmtask.FirmFileCount = sizeInterface.Size()
 	}
+	oneupdatefirmtask.WholeChecksum = CalcChecksum(firmbuf, firmnum+1)
 	oneupdatefirmtask.PartPercent = 0
 	oneupdatefirmtask.DoTime = time.Now()
+	oneupdatefirmtask.AllFramesCount = oneupdatefirmtask.FirmFileCount / CountInPerFrame
 	no := searchtask(binFirmSerial)
-	if no == -1{
-		updatefirmtasks = append(updatefirmtasks，oneupdatefirmtask)
-	}else{
+	if no == -1 {
+		updatefirmtasks = append(updatefirmtasks, oneupdatefirmtask)
+	} else {
 		updatefirmtasks[no].DoTime = time.Now()
-		updatefirmtasks[no].FirmFileCount =  oneupdatefirmtask.FirmFileCount
+		updatefirmtasks[no].FirmFileCount = oneupdatefirmtask.FirmFileCount
 		updatefirmtasks[no].PartPercent = oneupdatefirmtask.PartPercent
 		updatefirmtasks[no].Procedure = oneupdatefirmtask.Procedure
-	 	
+		updatefirmtasks[no].WholeChecksum = oneupdatefirmtask.WholeChecksum
+		updatefirmtasks[no].FirmFileBuf = oneupdatefirmtask.FirmFileBuf
+		updatefirmtasks[no].AllFramesCount = oneupdatefirmtask.AllFramesCount
 	}
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
@@ -183,42 +192,98 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	framenum := 0
-	framenum = firmnum/50
+	framenum = firmnum / CountInPerFrame
 	btmp := make([]byte, 2)
 	binary.LittleEndian.PutUint16(btmp, uint16(framenum))
-	
-	buffer_updateparm := make([]byte,256)
+
+	buffer_updateparm := make([]byte, 256)
 	buffer_updateparm[0] = 0xEE
 	buffer_updateparm[1] = 0x83
 	copy(buffer_updateparm[2:2+6], binFirmSerial[:6])
 	buffer_updateparm[8] = 0
 	buffer_updateparm[9] = 7
-	buffer_updateparm[10] =  btmp[1]
-	buffer_updateparm[11] =  btmp[0]
+	buffer_updateparm[10] = btmp[1]
+	buffer_updateparm[11] = btmp[0]
 	buffer_updateparm[12] = CalcChecksum(firmbuf, firmnum+1)
 	buffer_updateparm[13] = 0
 	buffer_updateparm[14] = 0
 	buffer_updateparm[15] = 0
 	buffer_updateparm[16] = 0
 	buffer_updateparm[17] = 0 //close
-	buffer_updateparm[18] = CalcChecksum(buffer_updateparm,19)
-	
-	
+	buffer_updateparm[18] = CalcChecksum(buffer_updateparm, 19)
+
 	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_updateparm[:19])
 	if err != nil {
 		glog.V(3).Infoln("无法发送0x83数据包", buffer_setparm[:19], sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
-    
-	go updatefirmstart(poolgetnum )
+
+	go updatefirmstart(poolgetnum, no)
 	glog.V(3).Infoln("成功发送0x83数据包", buffer_setparm[:19], sendcount)
 	w.Write([]byte("{status:'0'}"))
 	return
 }
-func updatefirmstart(poolgetnum  int ){
-	
-	
+func updatefirmstart(poolgetnum int, no int) {
+	rp := <-updatefirmtasks[no].ReportChan
+	if rp < 0 {
+		return
+	}
+
+	buffer_update := make([]byte, 256)
+	FrameCount := updatefirmtasks[no].AllFramesCount + 1
+
+	addfilesize := 0
+	var SizeinPerPack int16 = 0
+	var SizeinWholePack int16 = 0
+	btmp := make([]byte, 2)
+
+	for i := 1; i <= FrameCount; i++ {
+
+		addfilesize = i * CountInPerFrame
+		if addfilesize >= updatefirmtasks[no].FirmFileCount {
+			SizeinPerPack = updatefirmtasks[no].FirmFileCount - (addfilesize - CountInPerFrame)
+		} else {
+			SizeinPerPack = CountInPerFrame
+		}
+
+		SizeinWholePack = SizeinPerPack + 5
+
+		buffer_update[0] = 0xEE
+		buffer_update[1] = 0x84
+		copy(buffer_update[2:2+6], updatefirmtasks[no].FirmSerial[:6])
+		binary.LittleEndian.PutUint16(btmp, SizeinWholePack)
+		buffer_update[8] = btmp[1]
+		buffer_update[9] = btmp[0]
+		binary.LittleEndian.PutUint16(btmp, int16(i))
+		buffer_update[10] = btmp[1]
+		buffer_update[11] = btmp[0]
+		binary.LittleEndian.PutUint16(btmp, int16(SizeinPerPack))
+		buffer_update[12] = btmp[1]
+		buffer_update[13] = btmp[0]
+		copy(buffer_update[14:14+SizeinPerPack], updatefirmtasks[no].FirmFileBuf[(i-1)*CountInPerFrame:(i-1)*CountInPerFrame+SizeinPerPack])
+		buffer_update[14+SizeinPerPack] = CalcChecksum(buffer_update[10:10+4+SizeinPerPack], 4+SizeinPerPack+1)
+		buffer_update[14+SizeinPerPack+1] = 0 //close bit
+		buffer_update[14+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+SizeinPerPack+2+1)
+		sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_update[:14+SizeinPerPack+2+1])
+		if err != nil {
+			glog.V(3).Infoln("无法发送0x84数据包", buffer_update[:14+SizeinPerPack+2+1], sendcount)
+
+			return
+		}
+		updatefirmtasks[no].Procedure = 3
+
+		rp := <-updatefirmtasks[no].ReportChan
+		if rp < 0 {
+			return
+		}
+		if rp == i {
+			i = i - 1
+			continue
+		}
+
+	}
+
 }
 func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
@@ -457,8 +522,11 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 	return
 
 }
-func main() {
 
+var CountInPerFrame int
+
+func main() {
+	CountInPerFrame = 50
 	sockport := flag.Int("p", 48080, "socket server port")
 	webport := flag.Int("wp", 58080, "socket server port")
 	flag.Parse()
@@ -496,6 +564,49 @@ func IsEqualChecksum(buffer []byte, n int) int {
 	}
 
 	return 1
+}
+func DealWithUpdateFirm(buffer []byte, n int) {
+	CMDchar := buffer[1]
+	if CMDchar != 0x04 {
+		return 1
+	}
+	FirmSeriala = make([]byte, 6)
+	copy(FirmSerial[:6], buffer[2:2+6])
+	allchecksum := buffer[12]
+
+	num := searchtask(FirmSerial)
+	if num == -1 {
+		return 2
+	}
+	if updatefirmtasks[num].WholeChecksum == allchecksum && updatefirmtasks[num].Procedure == 3 {
+		updatefirmtasks[num].Procedure = 2
+		updatefirmtasks[num].ReportChan <- 1
+
+	}
+}
+
+func DealWithPreUpdateFirm(buffer []byte, n int) {
+	CMDchar := buffer[1]
+	if CMDchar != 0x03 {
+		return 1
+	}
+	FirmSerial := make([]byte, 6)
+	copy(FirmSerial[:6], buffer[2:2+6])
+	allchecksum := buffer[12]
+
+	num := searchtask(FirmSerial)
+	if num == -1 {
+		return 2
+	}
+
+	if updatefirmtasks[num].WholeChecksum == allchecksum && updatefirmtasks[num].Procedure == 1 {
+		updatefirmtasks[num].Procedure = 2
+		updatefirmtasks[num].ReportChan <- 1
+
+	}
+
+	return 0
+
 }
 
 type PackageStruct struct {
@@ -632,6 +743,8 @@ func handleConnection(conn net.Conn) {
 		DealWithBeatHeart(buffer, n)
 		DealWithParmGet(buffer, n)
 		DealWithParmSetReponse(buffer, n)
+		DealWithPreUpdateFirm(buffer, n)
+		DealWithUpdateFirm(buffer, n)
 
 	}
 }
