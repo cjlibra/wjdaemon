@@ -35,8 +35,6 @@ func dbopen() *mgo.Session {
 
 }
 func dbInsertheart(StrucPack PackageStruct) {
-	session := dbopen()
-	//defer session.Close()
 
 	// Optional. Switch the session to a monotonic behavior.
 	//session.SetMode(mgo.Monotonic, true)
@@ -59,7 +57,7 @@ func dbInsertheart(StrucPack PackageStruct) {
 			fmt.Println("Phone:", value.Phone, i, value.Achar[0])
 		}
 	*/
-	c := session.DB("heart").C("info")
+
 	err := c.Insert(&StrucPack)
 	if err != nil {
 		log.Fatal(err)
@@ -524,9 +522,15 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 }
 
 var CountInPerFrame int
+var session *mgo.Session
+var c *mgo.Collection
 
 func main() {
 	CountInPerFrame = 50
+
+	session = dbopen()
+	c = session.DB("heart").C("info")
+	//defer session.Close()
 	sockport := flag.Int("p", 48080, "socket server port")
 	webport := flag.Int("wp", 58080, "socket server port")
 	flag.Parse()
