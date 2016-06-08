@@ -632,6 +632,7 @@ type PackageStruct struct {
 	InsideAntena     byte
 	ServerIpPort     string
 	OtherStatus      string
+	Dotime           time.Time
 	//CloseBit         byte
 }
 
@@ -699,6 +700,7 @@ func DealWithBeatHeart(buffer []byte, n int) int {
 	StrucPack.InsideAntena = buffer[61]
 	StrucPack.ServerIpPort = string(buffer[62 : 62+6])
 	StrucPack.OtherStatus = string(buffer[68 : 68+5])
+	StrucPack.Dotime = time.Now()
 
 	dbInsertheart(StrucPack)
 	return 0
@@ -709,17 +711,18 @@ type CONNINFO struct {
 	FirmSerialno [6]byte
 	ClientIp     string
 	Clientport   string
+	Dotime       time.Time
 }
 
 var linesinfos []CONNINFO
 
-func isfoundserialinpool(buffer []byte) (int, int) {
+func isfoundserialinpool(buffer []byte) int {
 	for index, value := range linesinfos {
 		if bytes.Equal(value.FirmSerialno[:6], buffer[2:2+6]) == true {
-			return 0, index
+			return index
 		}
 	}
-	return 1, -1
+	return -1
 }
 func handleConnection(conn net.Conn) {
 	var onelineinfo CONNINFO
@@ -736,14 +739,20 @@ func handleConnection(conn net.Conn) {
 		Log(conn.RemoteAddr().String(), "receive data:", buffer[:n])
 		Log(conn.RemoteAddr().String(), "receive data string:", string(buffer[:n]))
 
-		ret, _ := isfoundserialinpool(buffer)
-		if ret != 0 {
+		ret := isfoundserialinpool(buffer)
+		if ret == -1 {
 			onelineinfo.Conn = conn
 			copy(onelineinfo.FirmSerialno[:6], buffer[2:2+6])
 			onelineinfo.ClientIp = conn.RemoteAddr().String()
 			onelineinfo.Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
+			onelineinfo.Dotime = time.Now()
 			linesinfos = append(linesinfos, onelineinfo)
 
+		} else {
+			linesinfos[ret].Dotime = time.Now()
+			linesinfos[ret].Conn = conn
+			linesinfos[ret].ClientIp = conn.RemoteAddr().String()
+			linesinfos[ret].Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
 		}
 
 		if IsEqualChecksum(buffer, n) != 0 {
