@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"io/ioutil"
+
 	"log"
 	"net"
 	"net/http"
@@ -148,7 +148,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
-	file, filehandle, err := r.FormFile("firmfile")
+	file, _, err := r.FormFile("firmfile")
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -167,7 +167,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	copy(oneupdatefirmtask.FirmSerial[:6], binFirmSerial[:6])
 	oneupdatefirmtask.Procedure = 1
 	if sizeInterface, ok := file.(Size); ok {
-		oneupdatefirmtask.FirmFileCount = sizeInterface.Size()
+		oneupdatefirmtask.FirmFileCount = int(sizeInterface.Size())
 	}
 	oneupdatefirmtask.WholeChecksum = CalcChecksum(firmbuf, firmnum+1)
 	oneupdatefirmtask.PartPercent = 0
@@ -214,13 +214,13 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 
 	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_updateparm[:19])
 	if err != nil {
-		glog.V(3).Infoln("无法发送0x83数据包", buffer_setparm[:19], sendcount)
+		glog.V(3).Infoln("无法发送0x83数据包", buffer_updateparm[:19], sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
 	go updatefirmstart(poolgetnum, no)
-	glog.V(3).Infoln("成功发送0x83数据包", buffer_setparm[:19], sendcount)
+	glog.V(3).Infoln("成功发送0x83数据包", buffer_updateparm[:19], sendcount)
 	w.Write([]byte("{status:'0'}"))
 	return
 }
@@ -234,17 +234,17 @@ func updatefirmstart(poolgetnum int, no int) {
 	FrameCount := updatefirmtasks[no].AllFramesCount + 1
 
 	addfilesize := 0
-	var SizeinPerPack int16 = 0
-	var SizeinWholePack int16 = 0
+	var SizeinPerPack uint16 = 0
+	var SizeinWholePack uint16 = 0
 	btmp := make([]byte, 2)
 
 	for i := 1; i <= FrameCount; i++ {
 
 		addfilesize = i * CountInPerFrame
 		if addfilesize >= updatefirmtasks[no].FirmFileCount {
-			SizeinPerPack = updatefirmtasks[no].FirmFileCount - (addfilesize - CountInPerFrame)
+			SizeinPerPack = uint16(updatefirmtasks[no].FirmFileCount - (addfilesize - CountInPerFrame))
 		} else {
-			SizeinPerPack = CountInPerFrame
+			SizeinPerPack = uint16(CountInPerFrame)
 		}
 
 		SizeinWholePack = SizeinPerPack + 5
@@ -255,16 +255,16 @@ func updatefirmstart(poolgetnum int, no int) {
 		binary.LittleEndian.PutUint16(btmp, SizeinWholePack)
 		buffer_update[8] = btmp[1]
 		buffer_update[9] = btmp[0]
-		binary.LittleEndian.PutUint16(btmp, int16(i))
+		binary.LittleEndian.PutUint16(btmp, uint16(i))
 		buffer_update[10] = btmp[1]
 		buffer_update[11] = btmp[0]
-		binary.LittleEndian.PutUint16(btmp, int16(SizeinPerPack))
+		binary.LittleEndian.PutUint16(btmp, uint16(SizeinPerPack))
 		buffer_update[12] = btmp[1]
 		buffer_update[13] = btmp[0]
-		copy(buffer_update[14:14+SizeinPerPack], updatefirmtasks[no].FirmFileBuf[(i-1)*CountInPerFrame:(i-1)*CountInPerFrame+SizeinPerPack])
-		buffer_update[14+SizeinPerPack] = CalcChecksum(buffer_update[10:10+4+SizeinPerPack], 4+SizeinPerPack+1)
+		copy(buffer_update[14:14+SizeinPerPack], updatefirmtasks[no].FirmFileBuf[(i-1)*CountInPerFrame:(i-1)*CountInPerFrame+int(SizeinPerPack)])
+		buffer_update[14+SizeinPerPack] = CalcChecksum(buffer_update[10:10+4+SizeinPerPack], 4+int(SizeinPerPack)+1)
 		buffer_update[14+SizeinPerPack+1] = 0 //close bit
-		buffer_update[14+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+SizeinPerPack+2+1)
+		buffer_update[14+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+int(SizeinPerPack)+2+1)
 		sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_update[:14+SizeinPerPack+2+1])
 		if err != nil {
 			glog.V(3).Infoln("无法发送0x84数据包", buffer_update[:14+SizeinPerPack+2+1], sendcount)
@@ -565,27 +565,32 @@ func IsEqualChecksum(buffer []byte, n int) int {
 
 	return 1
 }
-func DealWithUpdateFirm(buffer []byte, n int) {
+func DealWithUpdateFirm(buffer []byte, n int) int {
 	CMDchar := buffer[1]
 	if CMDchar != 0x04 {
 		return 1
 	}
-	FirmSeriala = make([]byte, 6)
+	FirmSerial := make([]byte, 6)
 	copy(FirmSerial[:6], buffer[2:2+6])
-	allchecksum := buffer[12]
 
-	num := searchtask(FirmSerial)
-	if num == -1 {
+	if buffer[15] != CalcChecksum(buffer[14:14+6], 6) {
 		return 2
 	}
-	if updatefirmtasks[num].WholeChecksum == allchecksum && updatefirmtasks[num].Procedure == 3 {
-		updatefirmtasks[num].Procedure = 2
-		updatefirmtasks[num].ReportChan <- 1
-
+	num := searchtask(FirmSerial)
+	if num == -1 {
+		return 3
 	}
+	xuhao := int(buffer[10])*256 + int(buffer[11])
+	if buffer[14] != 0 {
+		updatefirmtasks[num].ReportChan <- xuhao
+	} else {
+		updatefirmtasks[num].ReportChan <- (xuhao + 1)
+	}
+
+	return 0
 }
 
-func DealWithPreUpdateFirm(buffer []byte, n int) {
+func DealWithPreUpdateFirm(buffer []byte, n int) int {
 	CMDchar := buffer[1]
 	if CMDchar != 0x03 {
 		return 1
@@ -601,7 +606,7 @@ func DealWithPreUpdateFirm(buffer []byte, n int) {
 
 	if updatefirmtasks[num].WholeChecksum == allchecksum && updatefirmtasks[num].Procedure == 1 {
 		updatefirmtasks[num].Procedure = 2
-		updatefirmtasks[num].ReportChan <- 1
+		updatefirmtasks[num].ReportChan <- 0
 
 	}
 
