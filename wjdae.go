@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+
+	"mime/multipart"
+	"strconv"
 
 	"log"
 	"net"
@@ -120,7 +125,35 @@ func searchtask(FirmSerial []byte) int {
 
 	return -1
 }
+func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
+	br := bufio.NewReader(file)
+	bb := []byte("00")
+	firmbufcount := 0
+	for {
+		//每次读取一行
+		line, err := br.ReadString('\n')
+		if len(line) <= 8 {
+			glog.V(3).Infoln("读取文件出错,行太短", line)
+			return 0, err
+		}
+		if err == io.EOF {
+			break
+		} else {
+			glog.V(3).Infoln("读取文件出错", line)
+			return 0, err
+		}
+		a0, _ := strconv.Atoi(line[0:1])
+		a1, _ := strconv.Atoi(line[1:2])
+		aa := a0*16 + a1
+		if bytes.Equal([]byte(line[6:6+2]), bb[:2]) != true {
+			continue
+		}
+		copy(firmbuf[firmbufcount:firmbufcount+aa], line[8:8+aa])
+		firmbufcount = firmbufcount + aa
 
+	}
+	return firmbufcount, nil
+}
 func updatefirm(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(32 << 20)
 	//r.ParseForm()
@@ -130,17 +163,12 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) <= 0 {
+	if len(FirmSerial) != 6 {
 		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
-	binFirmSerial, err := hex.DecodeString(FirmSerial)
-	if err != nil {
-		glog.V(3).Infoln("FirmSerial DecodeString出错")
-		w.Write([]byte("{status:'1003'}"))
-		return
-	}
+	binFirmSerial := []byte(FirmSerial)
 
 	if "POST" != r.Method {
 		w.Write([]byte("{status:'1004'}"))
@@ -153,6 +181,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	firmbuf := make([]byte, 1024*1024)
+	ReadFromStdFile(file, firmbuf)
 	firmnum, err := file.Read(firmbuf)
 	if err != nil {
 		glog.V(3).Infoln("Firm文件读取失败")
@@ -169,13 +198,13 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	}
 	oneupdatefirmtask.WholeChecksum = CalcChecksum(firmbuf, firmnum+1)
 	oneupdatefirmtask.PartPercent = 0
-	oneupdatefirmtask.DoTime = time.Now()
+	oneupdatefirmtask.DoTime = time.Now().Local()
 	oneupdatefirmtask.AllFramesCount = oneupdatefirmtask.FirmFileCount / CountInPerFrame
 	no := searchtask(binFirmSerial)
 	if no == -1 {
 		updatefirmtasks = append(updatefirmtasks, oneupdatefirmtask)
 	} else {
-		updatefirmtasks[no].DoTime = time.Now()
+		updatefirmtasks[no].DoTime = time.Now().Local()
 		updatefirmtasks[no].FirmFileCount = oneupdatefirmtask.FirmFileCount
 		updatefirmtasks[no].PartPercent = oneupdatefirmtask.PartPercent
 		updatefirmtasks[no].Procedure = oneupdatefirmtask.Procedure
@@ -356,7 +385,17 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("{status:'0'}"))
 	return
 }
+func updatefirmafter(w http.ResponseWriter, r *http.Request) {
+	b, err := json.Marshal(updatefirmtasks)
+	if err != nil {
+		glog.V(2).Infoln("json编码问题updatefirmtasks", err)
+		w.Write([]byte("{status:'1001'}"))
+		return
+	}
 
+	glog.V(2).Infoln(string(b))
+	w.Write(b)
+}
 func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	FirmSerial := r.FormValue("FirmSerial")
@@ -523,6 +562,7 @@ func main() {
 
 	go SocketServer(fmt.Sprintf("%d", *sockport))
 
+	http.HandleFunc("/updatefirmafter", updatefirmafter)
 	http.HandleFunc("/updatefirm", updatefirm)
 	http.HandleFunc("/getparmfromfrontafter", getparmfromfrontafter)
 	http.HandleFunc("/getparmfromfront", getparmfromfront)
@@ -575,6 +615,7 @@ func DealWithUpdateFirm(buffer []byte, n int) int {
 		updatefirmtasks[num].ReportChan <- xuhao
 	} else {
 		updatefirmtasks[num].ReportChan <- (xuhao + 1)
+		updatefirmtasks[num].PartPercent = xuhao * 100 / (updatefirmtasks[num].FirmFileCount/CountInPerFrame + 1)
 	}
 
 	return 0
@@ -763,11 +804,11 @@ func handleConnection(conn net.Conn) {
 			copy(onelineinfo.FirmSerialno[:6], buffer[2:2+6])
 			onelineinfo.ClientIp = conn.RemoteAddr().String()
 			onelineinfo.Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
-			onelineinfo.Dotime = time.Now()
+			onelineinfo.Dotime = time.Now().Local()
 			linesinfos = append(linesinfos, onelineinfo)
 
 		} else {
-			linesinfos[ret].Dotime = time.Now()
+			linesinfos[ret].Dotime = time.Now().Local()
 			linesinfos[ret].Conn = conn
 			linesinfos[ret].ClientIp = conn.RemoteAddr().String()
 			linesinfos[ret].Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
