@@ -296,12 +296,8 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
-	binFirmSerial, err := hex.DecodeString(FirmSerial)
-	if err != nil {
-		glog.V(3).Infoln("FirmSerial DecodeString出错")
-		w.Write([]byte("{status:'1003'}"))
-		return
-	}
+	binFirmSerial := []byte(FirmSerial)
+
 	if bytes.Equal([]byte(oneStrucPack.FirmSerailno[:6]), binFirmSerial[:6]) != true {
 		glog.V(3).Infoln("找不到Firmserialno")
 		w.Write([]byte("{status:'1004'}"))
@@ -320,23 +316,21 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 }
 func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	FirmSerial := r.FormValue("FirmSerial")
+
 	if len(r.Form["FirmSerial"]) <= 0 {
 		glog.V(3).Infoln("FirmSerial请求参数缺失")
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) <= 0 {
+	FirmSerial := r.FormValue("FirmSerial")
+	if len(FirmSerial) < 6 {
 		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
-	binFirmSerial, err := hex.DecodeString(FirmSerial)
-	if err != nil {
-		glog.V(3).Infoln("FirmSerial DecodeString出错")
-		w.Write([]byte("{status:'1003'}"))
-		return
-	}
+	binFirmSerial := []byte(FirmSerial)
+
+	glog.V(3).Infoln(binFirmSerial)
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
 		glog.V(3).Infoln("客户端未连接上来")
@@ -376,12 +370,8 @@ func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
-	binFirmSerial, err := hex.DecodeString(FirmSerial)
-	if err != nil {
-		glog.V(3).Infoln("FirmSerial DecodeString出错")
-		w.Write([]byte("{status:'1003'}"))
-		return
-	}
+	binFirmSerial := []byte(FirmSerial)
+
 	if bytes.Equal([]byte(secondStrucPack.FirmSerailno[:6]), binFirmSerial[:6]) != true {
 		glog.V(3).Infoln("reponse pool找不到Firmserialno")
 		w.Write([]byte("{status:'1004'}"))
@@ -430,19 +420,15 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 		len(Monswitchset) != 2 ||
 		len(Sysresetset) != 2 ||
 		len(Defaultbackset) != 2 ||
-		len(Otherset) != 2 {
+		len(Otherset) != 6 {
 
 		glog.V(3).Infoln("setparmtofront请求参数内容不准确")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 
-	binFirmSerial, err := hex.DecodeString(FirmSerial)
-	if err != nil {
-		glog.V(3).Infoln("FirmSerial DecodeString出错")
-		w.Write([]byte("{status:'1003'}"))
-		return
-	}
+	binFirmSerial := []byte(FirmSerial)
+
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
 		glog.V(3).Infoln("客户端未连接上来")
@@ -510,12 +496,12 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 
 	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_setparm[:21])
 	if err != nil {
-		glog.V(3).Infoln("无法发送0x82数据包", buffer_setparm[:21], sendcount)
+		glog.V(3).Infoln("无法发送0x82数据包", hex.EncodeToString(buffer_setparm[:21]), sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
-	glog.V(3).Infoln("成功发送0x82数据包", buffer_setparm[:21])
+	glog.V(3).Infoln("成功发送0x82数据包", hex.EncodeToString(buffer_setparm[:21]))
 	w.Write([]byte("{status:'0'}"))
 	return
 
@@ -675,11 +661,21 @@ func DealWithParmGet(buffer []byte, n int) int {
 	oneStrucPack.SoftVersion = string(buffer[57 : 57+3])
 	oneStrucPack.OutsideAntena = buffer[60]
 	oneStrucPack.InsideAntena = buffer[61]
-	oneStrucPack.ServerIpPort = string(buffer[62 : 62+6])
+	oneStrucPack.ServerIpPort = Iphex2string(buffer[62:62+6], 6)
 	oneStrucPack.OtherStatus = string(buffer[68 : 68+5])
+	oneStrucPack.Dotime = time.Now().Local()
 
 	return 0
 
+}
+func Iphex2string(buf []byte, n int) string {
+	a1 := fmt.Sprintf("%d", uint8(buf[0]))
+	a2 := fmt.Sprintf("%d", uint8(buf[1]))
+	a3 := fmt.Sprintf("%d", uint8(buf[2]))
+	a4 := fmt.Sprintf("%d", uint8(buf[3]))
+	a5 := fmt.Sprintf("%d", uint(buf[4])*256+uint(buf[5]))
+	ss := fmt.Sprintf("%s.%s.%s.%s:%s", a1, a2, a3, a4, a5)
+	return ss
 }
 func DealWithBeatHeart(buffer []byte, n int) int {
 	CMDchar := buffer[1]
@@ -698,11 +694,33 @@ func DealWithBeatHeart(buffer []byte, n int) int {
 	StrucPack.SoftVersion = string(buffer[57 : 57+3])
 	StrucPack.OutsideAntena = buffer[60]
 	StrucPack.InsideAntena = buffer[61]
-	StrucPack.ServerIpPort = string(buffer[62 : 62+6])
+	StrucPack.ServerIpPort = Iphex2string(buffer[62:62+6], 6)
 	StrucPack.OtherStatus = string(buffer[68 : 68+5])
-	StrucPack.Dotime = time.Now()
+	StrucPack.Dotime = time.Now().Local()
 
 	dbInsertheart(StrucPack)
+
+	ret := isfoundserialinpool(buffer)
+	if ret == -1 {
+		glog.V(3).Infoln("客户端没有连接上")
+
+		return 1
+	}
+	buffer_heartback := make([]byte, 256)
+	buffer_heartback[0] = 0xEE
+	buffer_heartback[1] = 0x81
+	copy(buffer_heartback[2:2+6], buffer[2:2+6])
+	buffer_heartback[8] = 0x00
+	buffer_heartback[9] = 0x01
+	buffer_heartback[10] = 0x00
+	buffer_heartback[11] = CalcChecksum(buffer_heartback, 12)
+	sendcount, err := linesinfos[ret].Conn.Write(buffer_heartback[:12])
+	if err != nil {
+		glog.V(3).Infoln("无法发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12]), sendcount)
+
+		return 2
+	}
+	glog.V(3).Infoln("成功发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12]), sendcount)
 	return 0
 }
 
@@ -736,8 +754,8 @@ func handleConnection(conn net.Conn) {
 		}
 
 		Log(conn.RemoteAddr().String(), "receive data length:", n)
-		Log(conn.RemoteAddr().String(), "receive data:", buffer[:n])
-		Log(conn.RemoteAddr().String(), "receive data string:", string(buffer[:n]))
+		Log(conn.RemoteAddr().String(), "receive data:", hex.EncodeToString(buffer[:n]))
+		//Log(conn.RemoteAddr().String(), "receive data string:", string(buffer[:n]))
 
 		ret := isfoundserialinpool(buffer)
 		if ret == -1 {
