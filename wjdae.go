@@ -13,7 +13,6 @@ import (
 	"mime/multipart"
 	"strconv"
 
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -25,19 +24,22 @@ import (
 	//"gopkg.in/mgo.v2/bson"
 )
 
-type Person struct {
-	Name  string
-	Phone string
-	Achar [2]byte
-}
+func dbopen() (*mgo.Session, error) {
+	var session *mgo.Session
+	var err error
+	for {
+		session, err = mgo.Dial("202.127.26.247")
+		if err != nil {
+			glog.V(3).Infoln("数据库连接断了")
 
-func dbopen() *mgo.Session {
-	session, err := mgo.Dial("202.127.26.247")
-	if err != nil {
-		panic(err)
+			time.Sleep(time.Second * 5)
+			glog.V(3).Infoln("重新启动连接")
+		} else {
+			break
+		}
+
 	}
-	return session
-
+	return session, err
 }
 func dbInsertheart(StrucPack PackageStruct) {
 
@@ -62,10 +64,23 @@ func dbInsertheart(StrucPack PackageStruct) {
 			fmt.Println("Phone:", value.Phone, i, value.Achar[0])
 		}
 	*/
+	for {
+		err := c.Insert(&StrucPack)
+		if err != nil {
+			//log.Fatal(err)
 
-	err := c.Insert(&StrucPack)
-	if err != nil {
-		log.Fatal(err)
+			glog.V(3).Infoln("插入数据库有问题，有可能是数据库连接断了")
+
+			session.Close()
+			time.Sleep(time.Second * 5)
+
+			session, _ = dbopen()
+			c = session.DB("heart").C("info")
+
+		} else {
+			glog.V(3).Infoln("插入数据库有成功")
+			break
+		}
 	}
 }
 
@@ -134,21 +149,23 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 		line, err := br.ReadString('\n')
 		if len(line) <= 8 {
 			glog.V(3).Infoln("读取文件出错,行太短", line)
-			return 0, err
+			return -1, err
 		}
 		if err == io.EOF {
 			break
 		} else {
-			glog.V(3).Infoln("读取文件出错", line)
-			return 0, err
+			if err != nil {
+				glog.V(3).Infoln("读取文件出错", line)
+				return -2, err
+			}
 		}
-		a0, _ := strconv.Atoi(line[0:1])
-		a1, _ := strconv.Atoi(line[1:2])
-		aa := a0*16 + a1
-		if bytes.Equal([]byte(line[6:6+2]), bb[:2]) != true {
+		a0, _ := strconv.Atoi(line[1:2])
+		a1, _ := strconv.Atoi(line[2:3])
+		aa := (a0*16 + a1) * 2
+		if bytes.Equal([]byte(line[7:7+2]), bb[:2]) != true {
 			continue
 		}
-		copy(firmbuf[firmbufcount:firmbufcount+aa], line[8:8+aa])
+		copy(firmbuf[firmbufcount:firmbufcount+aa], line[9:9+aa])
 		firmbufcount = firmbufcount + aa
 
 	}
@@ -181,10 +198,10 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	firmbuf := make([]byte, 1024*1024)
-	ReadFromStdFile(file, firmbuf)
-	firmnum, err := file.Read(firmbuf)
-	if err != nil {
-		glog.V(3).Infoln("Firm文件读取失败")
+
+	firmnum, err := ReadFromStdFile(file, firmbuf)
+	if firmnum <= 0 {
+		glog.V(3).Infoln("Firm文件读取失败", firmnum)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
@@ -553,7 +570,7 @@ var c *mgo.Collection
 func main() {
 	CountInPerFrame = 50
 
-	session = dbopen()
+	session, _ = dbopen()
 	c = session.DB("heart").C("info")
 	//defer session.Close()
 	sockport := flag.Int("p", 48080, "socket server port")
