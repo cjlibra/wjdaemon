@@ -124,11 +124,6 @@ type UPDATETASK struct {
 	ReportChan     chan int
 }
 
-// 获取文件大小的接口
-type Size interface {
-	Size() int64
-}
-
 var updatefirmtasks []UPDATETASK
 
 func searchtask(FirmSerial []byte) int {
@@ -147,10 +142,6 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 	for {
 		//每次读取一行
 		line, err := br.ReadString('\n')
-		if len(line) <= 8 {
-			glog.V(3).Infoln("读取文件出错,行太短", line)
-			return -1, err
-		}
 		if err == io.EOF {
 			break
 		} else {
@@ -159,6 +150,11 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 				return -2, err
 			}
 		}
+		if len(line) <= 8 {
+			glog.V(3).Infoln("读取文件出错,行太短", line)
+			return -1, err
+		}
+
 		a0, _ := strconv.Atoi(line[1:2])
 		a1, _ := strconv.Atoi(line[2:3])
 		aa := (a0*16 + a1) * 2
@@ -188,6 +184,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	binFirmSerial := []byte(FirmSerial)
 
 	if "POST" != r.Method {
+		glog.V(3).Infoln("请求模式：", r.Method)
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
@@ -210,16 +207,21 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 
 	copy(oneupdatefirmtask.FirmSerial[:6], binFirmSerial[:6])
 	oneupdatefirmtask.Procedure = 1
-	if sizeInterface, ok := file.(Size); ok {
-		oneupdatefirmtask.FirmFileCount = int(sizeInterface.Size())
-	}
+
+	oneupdatefirmtask.FirmFileCount = firmnum
+
 	oneupdatefirmtask.WholeChecksum = CalcChecksum(firmbuf, firmnum+1)
 	oneupdatefirmtask.PartPercent = 0
 	oneupdatefirmtask.DoTime = time.Now().Local()
 	oneupdatefirmtask.AllFramesCount = oneupdatefirmtask.FirmFileCount / CountInPerFrame
+	if oneupdatefirmtask.FirmFileCount%CountInPerFrame > 0 {
+		oneupdatefirmtask.AllFramesCount = oneupdatefirmtask.AllFramesCount + 1
+	}
 	no := searchtask(binFirmSerial)
 	if no == -1 {
 		updatefirmtasks = append(updatefirmtasks, oneupdatefirmtask)
+		no = len(updatefirmtasks) - 1
+		updatefirmtasks[no].ReportChan = make(chan int)
 	} else {
 		updatefirmtasks[no].DoTime = time.Now().Local()
 		updatefirmtasks[no].FirmFileCount = oneupdatefirmtask.FirmFileCount
@@ -229,14 +231,17 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		updatefirmtasks[no].FirmFileBuf = oneupdatefirmtask.FirmFileBuf
 		updatefirmtasks[no].AllFramesCount = oneupdatefirmtask.AllFramesCount
 	}
+
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
 		glog.V(3).Infoln("客户端未连接上来")
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
-	framenum := 0
-	framenum = firmnum / CountInPerFrame
+	framenum := firmnum / CountInPerFrame
+	if firmnum%CountInPerFrame > 0 {
+		framenum = framenum + 1
+	}
 	btmp := make([]byte, 2)
 	binary.LittleEndian.PutUint16(btmp, uint16(framenum))
 
@@ -258,13 +263,13 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 
 	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_updateparm[:19])
 	if err != nil {
-		glog.V(3).Infoln("无法发送0x83数据包", buffer_updateparm[:19], sendcount)
+		glog.V(3).Infoln("无法发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19]), sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
 	go updatefirmstart(poolgetnum, no)
-	glog.V(3).Infoln("成功发送0x83数据包", buffer_updateparm[:19], sendcount)
+	glog.V(3).Infoln("成功发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19]), sendcount)
 	w.Write([]byte("{status:'0'}"))
 	return
 }
@@ -275,7 +280,7 @@ func updatefirmstart(poolgetnum int, no int) {
 	}
 
 	buffer_update := make([]byte, 256)
-	FrameCount := updatefirmtasks[no].AllFramesCount + 1
+	FrameCount := updatefirmtasks[no].AllFramesCount
 
 	addfilesize := 0
 	var SizeinPerPack uint16 = 0
@@ -315,6 +320,7 @@ func updatefirmstart(poolgetnum int, no int) {
 
 			return
 		}
+		glog.V(3).Infoln("成功发送0x84数据包", hex.EncodeToString(buffer_update[:14+SizeinPerPack+2+1]), sendcount)
 		updatefirmtasks[no].Procedure = 3
 
 		rp := <-updatefirmtasks[no].ReportChan
@@ -403,9 +409,31 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	return
 }
 func updatefirmafter(w http.ResponseWriter, r *http.Request) {
-	b, err := json.Marshal(updatefirmtasks)
+	strformat := `{
+		FirmSerial :'%s',
+		Procedure : %d ,	
+		FirmFileCount : %d , 
+		AllFramesCount : %d ,
+		PartPercent    : %d ,
+		WholeChecksum  '%02X' ,
+		DoTime         '%s'
+	 }`
+	var alllinestrs []string
+	for _, value := range updatefirmtasks {
+		onelinestr := fmt.Sprintf(strformat, string(value.FirmSerial[:6]),
+			value.Procedure,
+			value.FirmFileCount,
+			value.AllFramesCount,
+			value.PartPercent,
+			value.WholeChecksum,
+			value.DoTime.Local().String())
+
+		alllinestrs = append(alllinestrs, onelinestr)
+	}
+
+	b, err := json.Marshal(alllinestrs)
 	if err != nil {
-		glog.V(2).Infoln("json编码问题updatefirmtasks", err)
+		glog.V(2).Infoln("json编码问题alllinestrs", err)
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
@@ -654,7 +682,9 @@ func DealWithPreUpdateFirm(buffer []byte, n int) int {
 
 	if updatefirmtasks[num].WholeChecksum == allchecksum && updatefirmtasks[num].Procedure == 1 {
 		updatefirmtasks[num].Procedure = 2
+		glog.V(3).Infoln("11111", num)
 		updatefirmtasks[num].ReportChan <- 0
+		glog.V(3).Infoln("2222")
 
 	}
 
@@ -802,7 +832,7 @@ func isfoundserialinpool(buffer []byte) int {
 }
 func handleConnection(conn net.Conn) {
 	var onelineinfo CONNINFO
-
+	defer conn.Close()
 	buffer := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buffer)
