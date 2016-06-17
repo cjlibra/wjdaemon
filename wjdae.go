@@ -161,8 +161,13 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 		if bytes.Equal([]byte(line[7:7+2]), bb[:2]) != true {
 			continue
 		}
-		copy(firmbuf[firmbufcount:firmbufcount+aa], line[9:9+aa])
-		firmbufcount = firmbufcount + aa
+		b, err := hex.DecodeString(line[9 : 9+aa])
+		if err != nil {
+			glog.V(3).Infoln("无法hex.DecodeString")
+			return -3, err
+		}
+		copy(firmbuf[firmbufcount:firmbufcount+aa/2], b)
+		firmbufcount = firmbufcount + aa/2
 
 	}
 	return firmbufcount, nil
@@ -279,7 +284,7 @@ func updatefirmstart(poolgetnum int, no int) {
 		return
 	}
 
-	buffer_update := make([]byte, 256)
+	buffer_update := make([]byte, 1024)
 	FrameCount := updatefirmtasks[no].AllFramesCount
 
 	addfilesize := 0
@@ -287,7 +292,7 @@ func updatefirmstart(poolgetnum int, no int) {
 	var SizeinWholePack uint16 = 0
 	btmp := make([]byte, 2)
 
-	for i := 1; i <= FrameCount; i++ {
+	for i := 0; i < FrameCount; i++ {
 
 		addfilesize = i * CountInPerFrame
 		if addfilesize >= updatefirmtasks[no].FirmFileCount {
@@ -310,7 +315,7 @@ func updatefirmstart(poolgetnum int, no int) {
 		binary.LittleEndian.PutUint16(btmp, uint16(SizeinPerPack))
 		buffer_update[12] = btmp[1]
 		buffer_update[13] = btmp[0]
-		copy(buffer_update[14:14+SizeinPerPack], updatefirmtasks[no].FirmFileBuf[(i-1)*CountInPerFrame:(i-1)*CountInPerFrame+int(SizeinPerPack)])
+		copy(buffer_update[14:14+SizeinPerPack], updatefirmtasks[no].FirmFileBuf[(i)*CountInPerFrame:(i)*CountInPerFrame+int(SizeinPerPack)])
 		buffer_update[14+SizeinPerPack] = CalcChecksum(buffer_update[10:10+4+SizeinPerPack], 4+int(SizeinPerPack)+1)
 		buffer_update[14+SizeinPerPack+1] = 0 //close bit
 		buffer_update[14+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+int(SizeinPerPack)+2+1)
@@ -323,7 +328,9 @@ func updatefirmstart(poolgetnum int, no int) {
 		glog.V(3).Infoln("成功发送0x84数据包", hex.EncodeToString(buffer_update[:14+SizeinPerPack+2+1]), sendcount)
 		updatefirmtasks[no].Procedure = 3
 
+		glog.V(3).Infoln("i:", i)
 		rp := <-updatefirmtasks[no].ReportChan
+		glog.V(3).Infoln("rp is", rp, "i:", i)
 		if rp < 0 {
 			return
 		}
@@ -375,7 +382,7 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	FirmSerial := r.FormValue("FirmSerial")
-	if len(FirmSerial) < 6 {
+	if len(FirmSerial) != 6 {
 		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
@@ -399,12 +406,12 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 
 	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_getparm[:11])
 	if err != nil {
-		glog.V(3).Infoln("无法发送0x80数据包", buffer_getparm[:11], sendcount)
+		glog.V(3).Infoln("无法发送0x80数据包", hex.EncodeToString(buffer_getparm[:11]), sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
-	glog.V(3).Infoln("成功发送0x80数据包", buffer_getparm[:11])
+	glog.V(3).Infoln("成功发送0x80数据包", hex.EncodeToString(buffer_getparm[:11]))
 	w.Write([]byte("{status:'0'}"))
 	return
 }
@@ -449,7 +456,7 @@ func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) <= 0 {
+	if len(FirmSerial) != 6 {
 		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
@@ -596,7 +603,7 @@ var session *mgo.Session
 var c *mgo.Collection
 
 func main() {
-	CountInPerFrame = 50
+	CountInPerFrame = 256
 
 	session, _ = dbopen()
 	c = session.DB("heart").C("info")
@@ -648,9 +655,10 @@ func DealWithUpdateFirm(buffer []byte, n int) int {
 	FirmSerial := make([]byte, 6)
 	copy(FirmSerial[:6], buffer[2:2+6])
 
-	if buffer[15] != CalcChecksum(buffer[14:14+6], 6) {
+	/*if buffer[15] != CalcChecksum(buffer[14:14+1], 1) {
+		glog.V(3).Infoln("rp ischecksum")
 		return 2
-	}
+	}*/
 	num := searchtask(FirmSerial)
 	if num == -1 {
 		return 3
