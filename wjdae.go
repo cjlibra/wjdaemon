@@ -105,7 +105,7 @@ func SocketServer(sockport string) {
 }
 func foundserialinpoolbynum(serialnum []byte) int {
 	for index, value := range linesinfos {
-		if bytes.Equal(value.FirmSerialno[:6], serialnum[:6]) == true {
+		if bytes.Equal(value.FirmSerialno[:6+12], serialnum[:6+12]) == true {
 			return index
 		}
 	}
@@ -113,7 +113,7 @@ func foundserialinpoolbynum(serialnum []byte) int {
 }
 
 type UPDATETASK struct {
-	FirmSerial     [6]byte
+	FirmSerial     [6 + 12]byte
 	Procedure      int
 	FirmFileCount  int
 	FirmFileBuf    []byte
@@ -128,7 +128,7 @@ var updatefirmtasks []UPDATETASK
 
 func searchtask(FirmSerial []byte) int {
 	for index, value := range updatefirmtasks {
-		if bytes.Equal(value.FirmSerial[:6], FirmSerial[:6]) == true {
+		if bytes.Equal(value.FirmSerial[:6+12], FirmSerial[:6+12]) == true {
 			return index
 		}
 	}
@@ -181,7 +181,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) != 6 {
+	if len(FirmSerial) != 6+12 {
 		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
@@ -210,7 +210,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	var oneupdatefirmtask UPDATETASK
 	oneupdatefirmtask.FirmFileBuf = firmbuf
 
-	copy(oneupdatefirmtask.FirmSerial[:6], binFirmSerial[:6])
+	copy(oneupdatefirmtask.FirmSerial[:6+12], binFirmSerial[:6+12])
 	oneupdatefirmtask.Procedure = 1
 
 	oneupdatefirmtask.FirmFileCount = firmnum
@@ -253,28 +253,28 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	buffer_updateparm := make([]byte, 256)
 	buffer_updateparm[0] = 0xEE
 	buffer_updateparm[1] = 0x83
-	copy(buffer_updateparm[2:2+6], binFirmSerial[:6])
-	buffer_updateparm[8] = 0
-	buffer_updateparm[9] = 7
-	buffer_updateparm[10] = btmp[1]
-	buffer_updateparm[11] = btmp[0]
-	buffer_updateparm[12] = CalcChecksum(firmbuf, firmnum+1)
-	buffer_updateparm[13] = 0
-	buffer_updateparm[14] = 0
-	buffer_updateparm[15] = 0
-	buffer_updateparm[16] = 0
-	buffer_updateparm[17] = 0 //close
-	buffer_updateparm[18] = CalcChecksum(buffer_updateparm, 19)
+	copy(buffer_updateparm[2:2+6+12], binFirmSerial[:6+12])
+	buffer_updateparm[8+12] = 0
+	buffer_updateparm[9+12] = 7
+	buffer_updateparm[10+12] = btmp[1]
+	buffer_updateparm[11+12] = btmp[0]
+	buffer_updateparm[12+12] = CalcChecksum(firmbuf, firmnum+1)
+	buffer_updateparm[13+12] = 0
+	buffer_updateparm[14+12] = 0
+	buffer_updateparm[15+12] = 0
+	buffer_updateparm[16+12] = 0
+	buffer_updateparm[17+12] = 0 //close
+	buffer_updateparm[18+12] = CalcChecksum(buffer_updateparm, 19+12)
 
-	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_updateparm[:19])
+	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_updateparm[:19+12])
 	if err != nil {
-		glog.V(3).Infoln("无法发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19]), sendcount)
+		glog.V(3).Infoln("无法发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19+12]), sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
 	go updatefirmstart(poolgetnum, no)
-	glog.V(3).Infoln("成功发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19]), sendcount)
+	glog.V(3).Infoln("成功发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19+12]), sendcount)
 	w.Write([]byte("{status:'0'}"))
 	return
 }
@@ -305,27 +305,27 @@ func updatefirmstart(poolgetnum int, no int) {
 
 		buffer_update[0] = 0xEE
 		buffer_update[1] = 0x84
-		copy(buffer_update[2:2+6], updatefirmtasks[no].FirmSerial[:6])
+		copy(buffer_update[2:2+6+12], updatefirmtasks[no].FirmSerial[:6+12])
 		binary.LittleEndian.PutUint16(btmp, SizeinWholePack)
-		buffer_update[8] = btmp[1]
-		buffer_update[9] = btmp[0]
+		buffer_update[8+12] = btmp[1]
+		buffer_update[9+12] = btmp[0]
 		binary.LittleEndian.PutUint16(btmp, uint16(i))
-		buffer_update[10] = btmp[1]
-		buffer_update[11] = btmp[0]
+		buffer_update[10+12] = btmp[1]
+		buffer_update[11+12] = btmp[0]
 		binary.LittleEndian.PutUint16(btmp, uint16(SizeinPerPack))
-		buffer_update[12] = btmp[1]
-		buffer_update[13] = btmp[0]
-		copy(buffer_update[14:14+SizeinPerPack], updatefirmtasks[no].FirmFileBuf[(i)*CountInPerFrame:(i)*CountInPerFrame+int(SizeinPerPack)])
-		buffer_update[14+SizeinPerPack] = CalcChecksum(buffer_update[14:14+SizeinPerPack], int(SizeinPerPack)+1)
-		buffer_update[14+SizeinPerPack+1] = 0 //close bit
-		buffer_update[14+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+int(SizeinPerPack)+2+1)
-		sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_update[:14+SizeinPerPack+2+1])
+		buffer_update[12+12] = btmp[1]
+		buffer_update[13+12] = btmp[0]
+		copy(buffer_update[14+12:14+SizeinPerPack+12], updatefirmtasks[no].FirmFileBuf[(i)*CountInPerFrame:(i)*CountInPerFrame+int(SizeinPerPack)])
+		buffer_update[14+12+SizeinPerPack] = CalcChecksum(buffer_update[14+12:14+12+SizeinPerPack], int(SizeinPerPack)+1)
+		buffer_update[14+12+SizeinPerPack+1] = 0 //close bit
+		buffer_update[14+12+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+12+int(SizeinPerPack)+2+1)
+		sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_update[:14+12+SizeinPerPack+2+1])
 		if err != nil {
-			glog.V(3).Infoln("无法发送0x84数据包", buffer_update[:14+SizeinPerPack+2+1], sendcount)
+			glog.V(3).Infoln("无法发送0x84数据包", buffer_update[:14+12+SizeinPerPack+2+1], sendcount)
 
 			return
 		}
-		glog.V(3).Infoln("成功发送0x84数据包", hex.EncodeToString(buffer_update[:14+SizeinPerPack+2+1]), sendcount)
+		glog.V(3).Infoln("成功发送0x84数据包", hex.EncodeToString(buffer_update[:14+12+SizeinPerPack+2+1]), sendcount)
 		updatefirmtasks[no].Procedure = 3
 
 		glog.V(3).Infoln("i:", i)
@@ -357,7 +357,7 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 	}
 	binFirmSerial := []byte(FirmSerial)
 
-	if bytes.Equal([]byte(oneStrucPack.FirmSerailno[:6]), binFirmSerial[:6]) != true {
+	if bytes.Equal([]byte(oneStrucPack.FirmSerailno[:6+12]), binFirmSerial[:6+12]) != true {
 		glog.V(3).Infoln("找不到Firmserialno")
 		w.Write([]byte("{status:'1004'}"))
 		return
@@ -369,7 +369,7 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	glog.V(2).Infoln(string(b))
+	glog.V(4).Infoln(string(b))
 	w.Write(b)
 
 }
@@ -382,14 +382,14 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	FirmSerial := r.FormValue("FirmSerial")
-	if len(FirmSerial) != 6 {
+	if len(FirmSerial) != 6+12 {
 		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	binFirmSerial := []byte(FirmSerial)
 
-	glog.V(3).Infoln(binFirmSerial)
+	glog.V(3).Infoln(hex.EncodeToString(binFirmSerial))
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
 		glog.V(3).Infoln("客户端未连接上来")
@@ -399,19 +399,19 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	buffer_getparm := make([]byte, 1024)
 	buffer_getparm[0] = 0xEE
 	buffer_getparm[1] = 0x80
-	copy(buffer_getparm[2:2+6], binFirmSerial[:6])
-	buffer_getparm[8] = 0
-	buffer_getparm[9] = 0
-	buffer_getparm[10] = CalcChecksum(buffer_getparm, 11)
+	copy(buffer_getparm[2:2+6+12], binFirmSerial[:6+12])
+	buffer_getparm[8+12] = 0
+	buffer_getparm[9+12] = 0
+	buffer_getparm[10+12] = CalcChecksum(buffer_getparm, 11+12)
 
-	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_getparm[:11])
+	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_getparm[:11+12])
 	if err != nil {
-		glog.V(3).Infoln("无法发送0x80数据包", hex.EncodeToString(buffer_getparm[:11]), sendcount)
+		glog.V(3).Infoln("无法发送0x80数据包", hex.EncodeToString(buffer_getparm[:11+12]), sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
-	glog.V(3).Infoln("成功发送0x80数据包", hex.EncodeToString(buffer_getparm[:11]))
+	glog.V(3).Infoln("成功发送0x80数据包", hex.EncodeToString(buffer_getparm[:11+12]))
 	w.Write([]byte("{status:'0'}"))
 	return
 }
@@ -427,7 +427,7 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 	 }`
 	var alllinestrs []string
 	for _, value := range updatefirmtasks {
-		onelinestr := fmt.Sprintf(strformat, string(value.FirmSerial[:6]),
+		onelinestr := fmt.Sprintf(strformat, string(value.FirmSerial[:6+12]),
 			value.Procedure,
 			value.FirmFileCount,
 			value.AllFramesCount,
@@ -456,14 +456,14 @@ func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) != 6 {
+	if len(FirmSerial) != 6+12 {
 		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	binFirmSerial := []byte(FirmSerial)
 
-	if bytes.Equal([]byte(secondStrucPack.FirmSerailno[:6]), binFirmSerial[:6]) != true {
+	if bytes.Equal([]byte(secondStrucPack.FirmSerailno[:6+12]), binFirmSerial[:6+12]) != true {
 		glog.V(3).Infoln("reponse pool找不到Firmserialno")
 		w.Write([]byte("{status:'1004'}"))
 		return
@@ -475,7 +475,7 @@ func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	glog.V(2).Infoln(string(b))
+	glog.V(4).Infoln(string(b))
 	w.Write(b)
 
 }
@@ -504,7 +504,7 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) != 6 ||
+	if len(FirmSerial) != 6+12 ||
 		len(Maskset) != 2 ||
 		len(Outantenaset) != 2 ||
 		len(Inantenaset) != 2 ||
@@ -572,27 +572,27 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 	buffer_setparm := make([]byte, 1024)
 	buffer_setparm[0] = 0xEE
 	buffer_setparm[1] = 0x82
-	copy(buffer_setparm[2:2+6], binFirmSerial[:6])
-	buffer_setparm[8] = 0
-	buffer_setparm[9] = 9
-	buffer_setparm[10] = binMaskset[0]
-	buffer_setparm[11] = binOutantenaset[0]
-	buffer_setparm[12] = binInantenaset[0]
-	buffer_setparm[13] = binMonswitchset[0]
-	buffer_setparm[14] = binSysresetset[0]
-	buffer_setparm[15] = binDefaultbackset[0]
-	copy(buffer_setparm[16:16+3], binOtherset[:3])
-	buffer_setparm[19] = 0
-	buffer_setparm[20] = CalcChecksum(buffer_setparm, 21)
+	copy(buffer_setparm[2:2+6+12], binFirmSerial[:6+12])
+	buffer_setparm[8+12] = 0
+	buffer_setparm[9+12] = 9
+	buffer_setparm[10+12] = binMaskset[0]
+	buffer_setparm[11+12] = binOutantenaset[0]
+	buffer_setparm[12+12] = binInantenaset[0]
+	buffer_setparm[13+12] = binMonswitchset[0]
+	buffer_setparm[14+12] = binSysresetset[0]
+	buffer_setparm[15+12] = binDefaultbackset[0]
+	copy(buffer_setparm[16+12:16+3+12], binOtherset[:3])
+	buffer_setparm[19+12] = 0
+	buffer_setparm[20+12] = CalcChecksum(buffer_setparm, 21+12)
 
-	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_setparm[:21])
+	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_setparm[:21+12])
 	if err != nil {
-		glog.V(3).Infoln("无法发送0x82数据包", hex.EncodeToString(buffer_setparm[:21]), sendcount)
+		glog.V(3).Infoln("无法发送0x82数据包", hex.EncodeToString(buffer_setparm[:21+12]), sendcount)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
-	glog.V(3).Infoln("成功发送0x82数据包", hex.EncodeToString(buffer_setparm[:21]))
+	glog.V(3).Infoln("成功发送0x82数据包", hex.EncodeToString(buffer_setparm[:21+12]))
 	w.Write([]byte("{status:'0'}"))
 	return
 
@@ -652,8 +652,8 @@ func DealWithUpdateFirm(buffer []byte, n int) int {
 	if CMDchar != 0x04 {
 		return 1
 	}
-	FirmSerial := make([]byte, 6)
-	copy(FirmSerial[:6], buffer[2:2+6])
+	FirmSerial := make([]byte, 6+12)
+	copy(FirmSerial[:6+12], buffer[2:2+6+12])
 
 	/*if buffer[15] != CalcChecksum(buffer[14:14+1], 1) {
 		glog.V(3).Infoln("rp ischecksum")
@@ -664,7 +664,7 @@ func DealWithUpdateFirm(buffer []byte, n int) int {
 		return 3
 	}
 	xuhao := int(buffer[10])*256 + int(buffer[11])
-	if buffer[14] != 0 {
+	if buffer[14+12] != 0 {
 		updatefirmtasks[num].ReportChan <- xuhao
 	} else {
 		updatefirmtasks[num].ReportChan <- (xuhao + 1)
@@ -679,9 +679,9 @@ func DealWithPreUpdateFirm(buffer []byte, n int) int {
 	if CMDchar != 0x03 {
 		return 1
 	}
-	FirmSerial := make([]byte, 6)
-	copy(FirmSerial[:6], buffer[2:2+6])
-	allchecksum := buffer[12]
+	FirmSerial := make([]byte, 6+12)
+	copy(FirmSerial[:6+12], buffer[2:2+6+12])
+	allchecksum := buffer[12+12]
 
 	num := searchtask(FirmSerial)
 	if num == -1 {
@@ -690,9 +690,8 @@ func DealWithPreUpdateFirm(buffer []byte, n int) int {
 
 	if updatefirmtasks[num].WholeChecksum == allchecksum && updatefirmtasks[num].Procedure == 1 {
 		updatefirmtasks[num].Procedure = 2
-		glog.V(3).Infoln("11111", num)
+
 		updatefirmtasks[num].ReportChan <- 0
-		glog.V(3).Infoln("2222")
 
 	}
 
@@ -732,8 +731,8 @@ func DealWithParmSetReponse(buffer []byte, n int) int {
 		return 1
 	}
 	secondStrucPack.CMDchar = buffer[1]
-	secondStrucPack.FirmSerailno = string(buffer[2 : 2+6])
-	secondStrucPack.ParmSetResponse = hex.EncodeToString(buffer[10 : 10+9])
+	secondStrucPack.FirmSerailno = string(buffer[2 : 2+6+12])
+	secondStrucPack.ParmSetResponse = hex.EncodeToString(buffer[10+12 : 10+9+12])
 
 	return 0
 }
@@ -747,18 +746,18 @@ func DealWithParmGet(buffer []byte, n int) int {
 	}
 
 	oneStrucPack.CMDchar = buffer[1]
-	oneStrucPack.FirmSerailno = string(buffer[2 : 2+6])
-	oneStrucPack.EquipID = string(buffer[10 : 10+30])
-	oneStrucPack.PhoneNum = string(buffer[40 : 40+11])
-	oneStrucPack.SysEnergy = buffer[40+11]
-	oneStrucPack.ConnStatus = buffer[40+11+1]
-	oneStrucPack.ReadWriterStatus = buffer[53]
-	oneStrucPack.FirmVersion = string(buffer[54 : 54+3])
-	oneStrucPack.SoftVersion = string(buffer[57 : 57+3])
-	oneStrucPack.OutsideAntena = buffer[60]
-	oneStrucPack.InsideAntena = buffer[61]
-	oneStrucPack.ServerIpPort = Iphex2string(buffer[62:62+6], 6)
-	oneStrucPack.OtherStatus = string(buffer[68 : 68+5])
+	oneStrucPack.FirmSerailno = string(buffer[2 : 2+6+12])
+	oneStrucPack.EquipID = string(buffer[10+12 : 10+30+12])
+	oneStrucPack.PhoneNum = string(buffer[40+12 : 40+11+12])
+	oneStrucPack.SysEnergy = buffer[40+11+12]
+	oneStrucPack.ConnStatus = buffer[40+11+1+12]
+	oneStrucPack.ReadWriterStatus = buffer[53+12]
+	oneStrucPack.FirmVersion = string(buffer[54+12 : 54+3+12])
+	oneStrucPack.SoftVersion = string(buffer[57+12 : 57+3+12])
+	oneStrucPack.OutsideAntena = buffer[60+12]
+	oneStrucPack.InsideAntena = buffer[61+12]
+	oneStrucPack.ServerIpPort = Iphex2string(buffer[62+12:62+6+12], 6)
+	oneStrucPack.OtherStatus = string(buffer[68+12 : 68+5+12])
 	oneStrucPack.Dotime = time.Now().Local()
 
 	return 0
@@ -780,18 +779,18 @@ func DealWithBeatHeart(buffer []byte, n int) int {
 	}
 	var StrucPack PackageStruct
 	StrucPack.CMDchar = buffer[1]
-	StrucPack.FirmSerailno = string(buffer[2 : 2+6])
-	StrucPack.EquipID = string(buffer[10 : 10+30])
-	StrucPack.PhoneNum = string(buffer[40 : 40+11])
-	StrucPack.SysEnergy = buffer[40+11]
-	StrucPack.ConnStatus = buffer[40+11+1]
-	StrucPack.ReadWriterStatus = buffer[53]
-	StrucPack.FirmVersion = string(buffer[54 : 54+3])
-	StrucPack.SoftVersion = string(buffer[57 : 57+3])
-	StrucPack.OutsideAntena = buffer[60]
-	StrucPack.InsideAntena = buffer[61]
-	StrucPack.ServerIpPort = Iphex2string(buffer[62:62+6], 6)
-	StrucPack.OtherStatus = string(buffer[68 : 68+5])
+	StrucPack.FirmSerailno = string(buffer[2 : 2+6+12])
+	StrucPack.EquipID = string(buffer[10+12 : 10+30+12])
+	StrucPack.PhoneNum = string(buffer[40+12 : 40+11+12])
+	StrucPack.SysEnergy = buffer[40+11+12]
+	StrucPack.ConnStatus = buffer[40+11+1+12]
+	StrucPack.ReadWriterStatus = buffer[53+12]
+	StrucPack.FirmVersion = string(buffer[54+12 : 54+3+12])
+	StrucPack.SoftVersion = string(buffer[57+12 : 57+3+12])
+	StrucPack.OutsideAntena = buffer[60+12]
+	StrucPack.InsideAntena = buffer[61+12]
+	StrucPack.ServerIpPort = Iphex2string(buffer[62+12:62+6+12], 6)
+	StrucPack.OtherStatus = string(buffer[68+12 : 68+5+12])
 	StrucPack.Dotime = time.Now().Local()
 
 	dbInsertheart(StrucPack)
@@ -805,24 +804,24 @@ func DealWithBeatHeart(buffer []byte, n int) int {
 	buffer_heartback := make([]byte, 256)
 	buffer_heartback[0] = 0xEE
 	buffer_heartback[1] = 0x81
-	copy(buffer_heartback[2:2+6], buffer[2:2+6])
-	buffer_heartback[8] = 0x00
-	buffer_heartback[9] = 0x01
-	buffer_heartback[10] = 0x00
-	buffer_heartback[11] = CalcChecksum(buffer_heartback, 12)
-	sendcount, err := linesinfos[ret].Conn.Write(buffer_heartback[:12])
+	copy(buffer_heartback[2:2+6+12], buffer[2:2+6+12])
+	buffer_heartback[8+12] = 0x00
+	buffer_heartback[9+12] = 0x01
+	buffer_heartback[10+12] = 0x00
+	buffer_heartback[11+12] = CalcChecksum(buffer_heartback, 12+12)
+	sendcount, err := linesinfos[ret].Conn.Write(buffer_heartback[:12+12])
 	if err != nil {
-		glog.V(3).Infoln("无法发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12]), sendcount)
+		glog.V(3).Infoln("无法发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12+12]), sendcount)
 
 		return 2
 	}
-	glog.V(3).Infoln("成功发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12]), sendcount)
+	glog.V(3).Infoln("成功发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12+12]), sendcount)
 	return 0
 }
 
 type CONNINFO struct {
 	Conn         net.Conn
-	FirmSerialno [6]byte
+	FirmSerialno [6 + 12]byte
 	ClientIp     string
 	Clientport   string
 	Dotime       time.Time
@@ -832,7 +831,7 @@ var linesinfos []CONNINFO
 
 func isfoundserialinpool(buffer []byte) int {
 	for index, value := range linesinfos {
-		if bytes.Equal(value.FirmSerialno[:6], buffer[2:2+6]) == true {
+		if bytes.Equal(value.FirmSerialno[:6+12], buffer[2:2+6+12]) == true {
 			return index
 		}
 	}
@@ -856,7 +855,7 @@ func handleConnection(conn net.Conn) {
 		ret := isfoundserialinpool(buffer)
 		if ret == -1 {
 			onelineinfo.Conn = conn
-			copy(onelineinfo.FirmSerialno[:6], buffer[2:2+6])
+			copy(onelineinfo.FirmSerialno[:6+12], buffer[2:2+6+12])
 			onelineinfo.ClientIp = conn.RemoteAddr().String()
 			onelineinfo.Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
 			onelineinfo.Dotime = time.Now().Local()
