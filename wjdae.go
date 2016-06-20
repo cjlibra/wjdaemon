@@ -294,7 +294,7 @@ func updatefirmstart(poolgetnum int, no int) {
 
 	for i := 0; i < FrameCount; i++ {
 
-		addfilesize = i * CountInPerFrame
+		addfilesize = (i + 1) * CountInPerFrame
 		if addfilesize >= updatefirmtasks[no].FirmFileCount {
 			SizeinPerPack = uint16(updatefirmtasks[no].FirmFileCount - (addfilesize - CountInPerFrame))
 		} else {
@@ -316,7 +316,7 @@ func updatefirmstart(poolgetnum int, no int) {
 		buffer_update[12] = btmp[1]
 		buffer_update[13] = btmp[0]
 		copy(buffer_update[14:14+SizeinPerPack], updatefirmtasks[no].FirmFileBuf[(i)*CountInPerFrame:(i)*CountInPerFrame+int(SizeinPerPack)])
-		buffer_update[14+SizeinPerPack] = CalcChecksum(buffer_update[10:10+4+SizeinPerPack], 4+int(SizeinPerPack)+1)
+		buffer_update[14+SizeinPerPack] = CalcChecksum(buffer_update[14:14+SizeinPerPack], int(SizeinPerPack)+1)
 		buffer_update[14+SizeinPerPack+1] = 0 //close bit
 		buffer_update[14+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+int(SizeinPerPack)+2+1)
 		sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_update[:14+SizeinPerPack+2+1])
