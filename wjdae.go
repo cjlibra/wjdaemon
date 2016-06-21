@@ -598,6 +598,94 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 
 }
 
+type SDBACK struct {
+	PageAll     int
+	CurrentPage int
+	Status      int
+	Data        []CONNINFO
+}
+
+func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	FirmSerial := r.FormValue("DeviceNO")
+	Page := r.FormValue("Page")
+	Callfunc := r.FormValue("Callback")
+	if len(r.Form["DeviceNO"]) <= 0 || len(r.Form["Page"]) <= 0 || len(r.Form["Callback"]) <= 0 {
+		glog.V(3).Infoln("GetSearchDevices请求参数缺失")
+		w.Write([]byte(fmt.Sprintf("%s(\"%s\")", Callfunc, "{status:1001}")))
+		return
+	}
+	if len(FirmSerial) <= 0 || len(Page) <= 0 || len(Callfunc) <= 0 {
+		glog.V(3).Infoln("GetSearchDevices请求参数内容不准确")
+		w.Write([]byte(fmt.Sprintf("%s(\"%s\")", Callfunc, "{status:1002}")))
+		return
+	}
+	var sdbackret SDBACK
+	var devicestatus CONNINFO
+	var devicestatuses []CONNINFO
+	var devicestatusespage []CONNINFO
+	if len(linesinfos) <= 0 {
+		glog.V(2).Infoln("linesinfos为空，表示没有设备连接上来")
+		w.Write([]byte(fmt.Sprintf("%s(\"%s\")", Callfunc, "{status:1003}")))
+		return
+	}
+	for _, lineinfo := range linesinfos {
+		if strings.Contains(string(lineinfo.FirmSerialno[:18]), FirmSerial) == true {
+			devicestatus.ClientIp = lineinfo.ClientIp
+			devicestatus.Clientport = lineinfo.Clientport
+			devicestatus.Dotime = lineinfo.Dotime
+			devicestatus.FirmSerialno = lineinfo.FirmSerialno
+			devicestatus.alive = lineinfo.alive
+			devicestatuses = append(devicestatuses, devicestatus)
+		}
+
+	}
+
+	pagesfromds := 0
+	countsfromds := len(devicestatuses)
+	if countsfromds%200 == 0 {
+		pagesfromds = countsfromds / 200
+	} else {
+		pagesfromds = countsfromds/200 + 1
+	}
+	sdbackret.PageAll = pagesfromds
+	tmpa, err := strconv.Atoi(Page)
+	if err != nil {
+		glog.V(2).Infoln("Page非数字")
+		w.Write([]byte(fmt.Sprintf("%s(\"%s\")", Callfunc, "{status:1006}")))
+		return
+	}
+
+	if tmpa > pagesfromds {
+		sdbackret.CurrentPage = pagesfromds
+	} else {
+		sdbackret.CurrentPage = tmpa
+	}
+	sdbackret.Status = 0
+
+	countsonnextpage := 0
+	if sdbackret.CurrentPage*200 > countsfromds {
+		countsonnextpage = countsfromds
+	} else {
+		countsonnextpage = sdbackret.CurrentPage * 200
+	}
+	for i := (sdbackret.CurrentPage - 1) * 200; i < countsonnextpage; i++ {
+		devicestatusespage = append(devicestatusespage, devicestatuses[i])
+	}
+	sdbackret.Data = devicestatusespage
+
+	b, err := json.Marshal(sdbackret)
+	if err != nil {
+		glog.V(2).Infoln("json编码问题sdbackret", err)
+		w.Write([]byte(fmt.Sprintf("%s(\"%s\")", Callfunc, "{status:1005}")))
+		return
+	}
+
+	retstr := fmt.Sprintf("%s(\"%s\")", Callfunc, string(b))
+	glog.V(4).Infoln(retstr)
+	w.Write([]byte(retstr))
+}
+
 var CountInPerFrame int
 var session *mgo.Session
 var c *mgo.Collection
@@ -621,6 +709,8 @@ func main() {
 
 	http.HandleFunc("/setparmtofrontafter", setparmtofrontafter)
 	http.HandleFunc("/setparmtofront", setparmtofront)
+
+	http.HandleFunc("/GetSearchDevices", GetSearchDevices)
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
 	glog.Info("WEB程序启动，开始监听" + fmt.Sprintf("%d", *webport) + "端口")
@@ -825,6 +915,7 @@ type CONNINFO struct {
 	ClientIp     string
 	Clientport   string
 	Dotime       time.Time
+	alive        int
 }
 
 var linesinfos []CONNINFO
@@ -839,7 +930,15 @@ func isfoundserialinpool(buffer []byte) int {
 }
 func handleConnection(conn net.Conn) {
 	var onelineinfo CONNINFO
-	defer conn.Close()
+	defer func() {
+		for _, value := range linesinfos {
+			if value.Conn == conn {
+				value.alive = 0
+
+			}
+		}
+		conn.Close()
+	}()
 	buffer := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buffer)
@@ -859,6 +958,7 @@ func handleConnection(conn net.Conn) {
 			onelineinfo.ClientIp = conn.RemoteAddr().String()
 			onelineinfo.Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
 			onelineinfo.Dotime = time.Now().Local()
+			onelineinfo.alive = 1
 			linesinfos = append(linesinfos, onelineinfo)
 
 		} else {
@@ -866,6 +966,7 @@ func handleConnection(conn net.Conn) {
 			linesinfos[ret].Conn = conn
 			linesinfos[ret].ClientIp = conn.RemoteAddr().String()
 			linesinfos[ret].Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
+			linesinfos[ret].alive = 1
 		}
 
 		if IsEqualChecksum(buffer, n) != 0 {
