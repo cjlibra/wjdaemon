@@ -345,6 +345,7 @@ func updatefirmstart(poolgetnum int, no int) {
 }
 func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(r.Form["FirmSerial"]) <= 0 {
 		glog.V(3).Infoln("FirmSerial请求参数缺失")
@@ -357,6 +358,12 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	binFirmSerial := []byte(FirmSerial)
+
+	if oneStrucPack.Refeshflag != 1 {
+		glog.V(3).Infoln("信息没有更新")
+		w.Write([]byte("{status:'1003'}"))
+		return
+	}
 
 	if bytes.Equal([]byte(oneStrucPack.FirmSerailno[:6+12]), binFirmSerial[:6+12]) != true {
 		glog.V(3).Infoln("找不到Firmserialno")
@@ -372,10 +379,12 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 
 	glog.V(4).Infoln(string(b))
 	w.Write(b)
+	oneStrucPack.Refeshflag = 0
 
 }
 func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 
 	if len(r.Form["FirmSerial"]) <= 0 {
 		glog.V(3).Infoln("FirmSerial请求参数缺失")
@@ -451,6 +460,7 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 }
 func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(r.Form["FirmSerial"]) <= 0 {
 		glog.V(3).Infoln("FirmSerial请求参数缺失")
@@ -483,6 +493,7 @@ func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 
 func setparmtofront(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	FirmSerial := r.FormValue("FirmSerial")
 	Maskset := r.FormValue("Maskset")
 	Outantenaset := r.FormValue("Outantenaset")
@@ -820,6 +831,7 @@ type PackageStruct struct {
 	OtherStatus      string
 	Dotime           time.Time
 	//CloseBit         byte
+	Refeshflag int
 }
 
 type PackageStructBySetParm struct {
@@ -864,6 +876,7 @@ func DealWithParmGet(buffer []byte, n int) int {
 	oneStrucPack.ServerIpPort = Iphex2string(buffer[62+12:62+6+12], 6)
 	oneStrucPack.OtherStatus = string(buffer[68+12 : 68+5+12])
 	oneStrucPack.Dotime = time.Now().Local()
+	oneStrucPack.Refeshflag = 1
 
 	return 0
 
