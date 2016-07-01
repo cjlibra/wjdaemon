@@ -280,6 +280,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	return
 }
 func updatefirmstart(poolgetnum int, no int) {
+
 	rp := <-updatefirmtasks[no].ReportChan
 	if rp < 0 {
 		return
@@ -330,7 +331,19 @@ func updatefirmstart(poolgetnum int, no int) {
 		updatefirmtasks[no].Procedure = 3
 
 		glog.V(3).Infoln("i:", i)
-		rp := <-updatefirmtasks[no].ReportChan
+
+		timeout := make(chan bool, 1)
+		go func() {
+			time.Sleep(time.Second * 60) // sleep 60 seconds
+			timeout <- true
+		}()
+		rp := -1
+		select {
+		case rp = <-updatefirmtasks[no].ReportChan:
+		case <-timeout:
+			fmt.Println("等待接收升级反馈数据包超时1分钟")
+			rp = i
+		}
 		glog.V(3).Infoln("rp is", rp, "i:", i)
 		if rp < 0 {
 			return
@@ -719,12 +732,13 @@ func main() {
 	NCPU := runtime.NumCPU()
 	runtime.GOMAXPROCS(NCPU)
 
-	session, _ = dbopen()
-	c = session.DB("heart").C("info")
 	//defer session.Close()
 	sockport := flag.Int("p", 48080, "socket server port")
 	webport := flag.Int("wp", 58080, "socket server port")
 	flag.Parse()
+
+	session, _ = dbopen()
+	c = session.DB("heart").C("info")
 
 	go SocketServer(fmt.Sprintf("%d", *sockport))
 
