@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+
 	"runtime"
 
 	"mime/multipart"
@@ -123,6 +124,7 @@ type UPDATETASK struct {
 	WholeChecksum  byte
 	DoTime         time.Time
 	ReportChan     chan int
+	NumNowPart     int
 }
 
 var updatefirmtasks []UPDATETASK
@@ -280,10 +282,18 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	return
 }
 func updatefirmstart(poolgetnum int, no int) {
+	var rp int
+	select {
+	case rp = <-updatefirmtasks[no].ReportChan:
+		if rp < 0 {
+			glog.V(3).Infoln("出错0x03数据包，rp:", rp)
+			return
+		}
 
-	rp := <-updatefirmtasks[no].ReportChan
-	if rp < 0 {
+	case <-time.After(time.Second * 5):
+		glog.V(3).Infoln("超时0x03数据包")
 		return
+
 	}
 
 	buffer_update := make([]byte, 1024)
@@ -323,33 +333,30 @@ func updatefirmstart(poolgetnum int, no int) {
 		buffer_update[14+12+SizeinPerPack+2] = CalcChecksum(buffer_update[0:], 14+12+int(SizeinPerPack)+2+1)
 		sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_update[:14+12+SizeinPerPack+2+1])
 		if err != nil {
-			glog.V(3).Infoln("无法发送0x84数据包", buffer_update[:14+12+SizeinPerPack+2+1], sendcount)
+			glog.V(3).Infoln("无法发送0x84数据包", hex.EncodeToString(buffer_update[:14+12+SizeinPerPack+2+1]), sendcount)
+			time.Sleep(time.Second * 20)
 
-			return
+			i = i - 1
+			continue
 		}
 		glog.V(3).Infoln("成功发送0x84数据包", hex.EncodeToString(buffer_update[:14+12+SizeinPerPack+2+1]), sendcount)
 		updatefirmtasks[no].Procedure = 3
 
 		glog.V(3).Infoln("i:", i)
 
-		timeout := make(chan bool, 1)
-		go func() {
-			time.Sleep(time.Second * 60) // sleep 60 seconds
-			timeout <- true
-		}()
-		rp := -1
+		rp = -1
 		select {
 		case rp = <-updatefirmtasks[no].ReportChan:
-		case <-timeout:
-			fmt.Println("等待接收升级反馈数据包超时1分钟")
+		case <-time.After(10 * time.Second):
+			fmt.Println("等待接收升级反馈数据包超时10秒钟", string(updatefirmtasks[no].FirmSerial[:18]))
 			rp = i
 		}
 		glog.V(3).Infoln("rp is", rp, "i:", i)
 		if rp < 0 {
 			return
 		}
-		if rp == i {
-			i = i - 1
+		if rp <= i {
+			i = rp - 1
 			continue
 		}
 
@@ -793,12 +800,21 @@ func DealWithUpdateFirm(buffer []byte, n int) int {
 	if num == -1 {
 		return 3
 	}
-	xuhao := int(buffer[10])*256 + int(buffer[11])
+	xuhao := int(buffer[10+12])*256 + int(buffer[11+12])
 	if buffer[14+12] != 0 {
 		updatefirmtasks[num].ReportChan <- xuhao
+		if xuhao == 0 {
+			updatefirmtasks[num].ReportChan <- -2 //反馈不成功，又是0从头开始，直接出错处理
+		}
 	} else {
 		updatefirmtasks[num].ReportChan <- (xuhao + 1)
-		updatefirmtasks[num].PartPercent = xuhao * 100 / (updatefirmtasks[num].FirmFileCount/CountInPerFrame + 1)
+		yusu := uint(updatefirmtasks[num].FirmFileCount % CountInPerFrame)
+		if yusu > 0 {
+			updatefirmtasks[num].PartPercent = xuhao * 100 / (updatefirmtasks[num].FirmFileCount/CountInPerFrame + 1)
+		} else {
+			updatefirmtasks[num].PartPercent = xuhao * 100 / (updatefirmtasks[num].FirmFileCount/CountInPerFrame + 0)
+		}
+		updatefirmtasks[num].NumNowPart = xuhao
 	}
 
 	return 0
