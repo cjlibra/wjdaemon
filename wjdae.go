@@ -26,16 +26,16 @@ import (
 	//"gopkg.in/mgo.v2/bson"
 )
 
-func dbopen() (*mgo.Session, error) {
+func dbopen(mongohost string) (*mgo.Session, error) {
 	var session *mgo.Session
 	var err error
 	for {
-		session, err = mgo.Dial("202.127.26.247")
+		session, err = mgo.Dial(mongohost)
 		if err != nil {
-			glog.V(3).Infoln("数据库连接断了")
+			glog.V(1).Infoln("数据库连接断了，连接的数据库ip：", mongohost)
 
 			time.Sleep(time.Second * 5)
-			glog.V(3).Infoln("重新启动连接")
+			glog.V(1).Infoln("重新启动连接")
 		} else {
 			break
 		}
@@ -71,16 +71,16 @@ func dbInsertheart(StrucPack PackageStruct) {
 		if err != nil {
 			//log.Fatal(err)
 
-			glog.V(3).Infoln("插入数据库有问题，有可能是数据库连接断了")
+			glog.V(1).Infoln("插入数据库有问题，有可能是数据库连接断了")
 
 			session.Close()
 			time.Sleep(time.Second * 5)
 
-			session, _ = dbopen()
+			session, _ = dbopen(*mongohost)
 			c = session.DB("heart").C("info")
 
 		} else {
-			glog.V(3).Infoln("插入数据库有成功")
+			glog.V(2).Infoln("插入数据库有成功")
 			break
 		}
 	}
@@ -149,12 +149,12 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 			break
 		} else {
 			if err != nil {
-				glog.V(3).Infoln("读取文件出错", line)
+				glog.V(1).Infoln("读取文件出错", line)
 				return -2, err
 			}
 		}
 		if len(line) <= 8 {
-			glog.V(3).Infoln("读取文件出错,行太短", line)
+			glog.V(1).Infoln("读取文件出错,行太短", line)
 			return -1, err
 		}
 
@@ -166,7 +166,7 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 		}
 		b, err := hex.DecodeString(line[9 : 9+aa])
 		if err != nil {
-			glog.V(3).Infoln("无法hex.DecodeString")
+			glog.V(1).Infoln("无法hex.DecodeString")
 			return -3, err
 		}
 		copy(firmbuf[firmbufcount:firmbufcount+aa/2], b)
@@ -180,19 +180,19 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	//r.ParseForm()
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(r.Form["FirmSerial"]) <= 0 {
-		glog.V(3).Infoln("FirmSerial请求参数缺失")
+		glog.V(1).Infoln("FirmSerial请求参数缺失")
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 	if len(FirmSerial) != 6+12 {
-		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
+		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	binFirmSerial := []byte(FirmSerial)
 
 	if "POST" != r.Method {
-		glog.V(3).Infoln("请求模式：", r.Method)
+		glog.V(1).Infoln("请求模式：", r.Method)
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
@@ -206,7 +206,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 
 	firmnum, err := ReadFromStdFile(file, firmbuf)
 	if firmnum <= 0 {
-		glog.V(3).Infoln("Firm文件读取失败", firmnum)
+		glog.V(1).Infoln("Firm文件读取失败", firmnum)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
@@ -231,6 +231,11 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		no = len(updatefirmtasks) - 1
 		updatefirmtasks[no].ReportChan = make(chan int)
 	} else {
+		if updatefirmtasks[no].Procedure != 0 {
+			glog.V(1).Infoln("客户端正在升级中，不要重复升级")
+			w.Write([]byte("{status:'1004'}"))
+			return
+		}
 		updatefirmtasks[no].DoTime = time.Now().Local()
 		updatefirmtasks[no].FirmFileCount = oneupdatefirmtask.FirmFileCount
 		updatefirmtasks[no].PartPercent = oneupdatefirmtask.PartPercent
@@ -242,8 +247,8 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
-		glog.V(3).Infoln("客户端未连接上来")
-		w.Write([]byte("{status:'1004'}"))
+		glog.V(1).Infoln("客户端未连接上来")
+		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 	framenum := firmnum / CountInPerFrame
@@ -277,7 +282,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go updatefirmstart(poolgetnum, no)
-	glog.V(3).Infoln("成功发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19+12]), sendcount)
+	glog.V(4).Infoln("成功发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19+12]), sendcount)
 	w.Write([]byte("{status:'0'}"))
 	return
 }
@@ -286,12 +291,12 @@ func updatefirmstart(poolgetnum int, no int) {
 	select {
 	case rp = <-updatefirmtasks[no].ReportChan:
 		if rp < 0 {
-			glog.V(3).Infoln("出错0x03数据包，rp:", rp)
+			glog.V(1).Infoln("出错0x03数据包，rp:", rp)
 			return
 		}
 
 	case <-time.After(time.Second * 5):
-		glog.V(3).Infoln("超时0x03数据包")
+		glog.V(1).Infoln("超时0x03数据包")
 		return
 
 	}
@@ -303,8 +308,8 @@ func updatefirmstart(poolgetnum int, no int) {
 	var SizeinPerPack uint16 = 0
 	var SizeinWholePack uint16 = 0
 	btmp := make([]byte, 2)
-
-	for i := 0; i < FrameCount; i++ {
+	i := 0
+	for i = 0; i < FrameCount; i++ {
 
 		addfilesize = (i + 1) * CountInPerFrame
 		if addfilesize >= updatefirmtasks[no].FirmFileCount {
@@ -339,19 +344,19 @@ func updatefirmstart(poolgetnum int, no int) {
 			i = i - 1
 			continue
 		}
-		glog.V(3).Infoln("成功发送0x84数据包", hex.EncodeToString(buffer_update[:14+12+SizeinPerPack+2+1]), sendcount)
+		glog.V(4).Infoln("成功发送0x84数据包", hex.EncodeToString(buffer_update[:14+12+SizeinPerPack+2+1]), sendcount)
 		updatefirmtasks[no].Procedure = 3
 
-		glog.V(3).Infoln("i:", i)
+		glog.V(5).Infoln("i:", i)
 
 		rp = -1
 		select {
 		case rp = <-updatefirmtasks[no].ReportChan:
 		case <-time.After(10 * time.Second):
-			fmt.Println("等待接收升级反馈数据包超时10秒钟", string(updatefirmtasks[no].FirmSerial[:18]))
+			glog.V(1).Infoln("等待接收升级反馈数据包超时10秒钟", string(updatefirmtasks[no].FirmSerial[:18]))
 			rp = i
 		}
-		glog.V(3).Infoln("rp is", rp, "i:", i)
+		glog.V(5).Infoln("rp is", rp, "i:", i)
 		if rp < 0 {
 			return
 		}
@@ -361,6 +366,13 @@ func updatefirmstart(poolgetnum int, no int) {
 		}
 
 	}
+	if i == FrameCount {
+		glog.V(2).Infoln("升级成功,设备码：", string(updatefirmtasks[no].FirmSerial[:18]))
+		updatefirmtasks[no].Procedure = 0
+	} else {
+		glog.V(2).Infoln("升级失败,设备码：", string(updatefirmtasks[no].FirmSerial[:18]))
+		updatefirmtasks[no].Procedure = 0
+	}
 
 }
 func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
@@ -368,36 +380,36 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(r.Form["FirmSerial"]) <= 0 {
-		glog.V(3).Infoln("FirmSerial请求参数缺失")
+		glog.V(1).Infoln("FirmSerial请求参数缺失")
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 	if len(FirmSerial) <= 0 {
-		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
+		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	binFirmSerial := []byte(FirmSerial)
 
 	if oneStrucPack.Refeshflag != 1 {
-		glog.V(3).Infoln("信息没有更新")
+		glog.V(1).Infoln("信息没有更新")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
 
 	if bytes.Equal([]byte(oneStrucPack.FirmSerailno[:6+12]), binFirmSerial[:6+12]) != true {
-		glog.V(3).Infoln("找不到Firmserialno")
+		glog.V(1).Infoln("找不到Firmserialno")
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
 	b, err := json.Marshal(oneStrucPack)
 	if err != nil {
-		glog.V(2).Infoln("json编码问题", err)
+		glog.V(1).Infoln("json编码问题", err)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
-	glog.V(4).Infoln(string(b))
+	glog.V(5).Infoln(string(b))
 	w.Write(b)
 	oneStrucPack.Refeshflag = 0
 
@@ -407,22 +419,22 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 
 	if len(r.Form["FirmSerial"]) <= 0 {
-		glog.V(3).Infoln("FirmSerial请求参数缺失")
+		glog.V(1).Infoln("FirmSerial请求参数缺失")
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(FirmSerial) != 6+12 {
-		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
+		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	binFirmSerial := []byte(FirmSerial)
 
-	glog.V(3).Infoln(hex.EncodeToString(binFirmSerial))
+	glog.V(5).Infoln(hex.EncodeToString(binFirmSerial))
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
-		glog.V(3).Infoln("客户端未连接上来")
+		glog.V(1).Infoln("客户端未连接上来")
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
@@ -441,7 +453,7 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	glog.V(3).Infoln("成功发送0x80数据包", hex.EncodeToString(buffer_getparm[:11+12]))
+	glog.V(4).Infoln("成功发送0x80数据包", hex.EncodeToString(buffer_getparm[:11+12]))
 	w.Write([]byte("{status:'0'}"))
 	return
 }
@@ -470,12 +482,12 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.Marshal(alllinestrs)
 	if err != nil {
-		glog.V(2).Infoln("json编码问题alllinestrs", err)
+		glog.V(1).Infoln("json编码问题alllinestrs", err)
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 
-	glog.V(2).Infoln(string(b))
+	glog.V(5).Infoln(string(b))
 	w.Write(b)
 }
 func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
@@ -483,30 +495,30 @@ func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(r.Form["FirmSerial"]) <= 0 {
-		glog.V(3).Infoln("FirmSerial请求参数缺失")
+		glog.V(1).Infoln("FirmSerial请求参数缺失")
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 	if len(FirmSerial) != 6+12 {
-		glog.V(3).Infoln("FirmSerial请求参数内容缺失")
+		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	binFirmSerial := []byte(FirmSerial)
 
 	if bytes.Equal([]byte(secondStrucPack.FirmSerailno[:6+12]), binFirmSerial[:6+12]) != true {
-		glog.V(3).Infoln("reponse pool找不到Firmserialno")
+		glog.V(1).Infoln("reponse pool找不到Firmserialno")
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
 	b, err := json.Marshal(secondStrucPack)
 	if err != nil {
-		glog.V(2).Infoln("json编码问题", err)
+		glog.V(1).Infoln("json编码问题", err)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
 
-	glog.V(4).Infoln(string(b))
+	glog.V(5).Infoln(string(b))
 	w.Write(b)
 
 }
@@ -532,7 +544,7 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 		len(r.Form["Defaultbackset"]) <= 0 ||
 		len(r.Form["Otherset"]) <= 0 {
 
-		glog.V(3).Infoln("setparmtofront请求参数缺失")
+		glog.V(1).Infoln("setparmtofront请求参数缺失")
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
@@ -545,7 +557,7 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 		len(Defaultbackset) != 2 ||
 		len(Otherset) != 6 {
 
-		glog.V(3).Infoln("setparmtofront请求参数内容不准确")
+		glog.V(1).Infoln("setparmtofront请求参数内容不准确")
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
@@ -554,50 +566,50 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 
 	poolgetnum := foundserialinpoolbynum(binFirmSerial)
 	if poolgetnum == -1 {
-		glog.V(3).Infoln("客户端未连接上来")
+		glog.V(1).Infoln("客户端未连接上来")
 		w.Write([]byte("{status:'1004'}"))
 		return
 	}
 
 	binMaskset, err := hex.DecodeString(Maskset)
 	if err != nil {
-		glog.V(3).Infoln("Maskset DecodeString出错")
+		glog.V(1).Infoln("Maskset DecodeString出错")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
 	binOutantenaset, err := hex.DecodeString(Outantenaset)
 	if err != nil {
-		glog.V(3).Infoln("Outantenaset DecodeString出错")
+		glog.V(1).Infoln("Outantenaset DecodeString出错")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
 	binInantenaset, err := hex.DecodeString(Inantenaset)
 	if err != nil {
-		glog.V(3).Infoln("Inantenaset DecodeString出错")
+		glog.V(1).Infoln("Inantenaset DecodeString出错")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
 	binMonswitchset, err := hex.DecodeString(Monswitchset)
 	if err != nil {
-		glog.V(3).Infoln("Monswitchset DecodeString出错")
+		glog.V(1).Infoln("Monswitchset DecodeString出错")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
 	binSysresetset, err := hex.DecodeString(Sysresetset)
 	if err != nil {
-		glog.V(3).Infoln("Sysresetset DecodeString出错")
+		glog.V(1).Infoln("Sysresetset DecodeString出错")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
 	binDefaultbackset, err := hex.DecodeString(Defaultbackset)
 	if err != nil {
-		glog.V(3).Infoln("Defaultbackset DecodeString出错")
+		glog.V(1).Infoln("Defaultbackset DecodeString出错")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
 	binOtherset, err := hex.DecodeString(Otherset)
 	if err != nil {
-		glog.V(3).Infoln("Otherset DecodeString出错")
+		glog.V(1).Infoln("Otherset DecodeString出错")
 		w.Write([]byte("{status:'1003'}"))
 		return
 	}
@@ -624,7 +636,7 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	glog.V(3).Infoln("成功发送0x82数据包", hex.EncodeToString(buffer_setparm[:21+12]))
+	glog.V(4).Infoln("成功发送0x82数据包", hex.EncodeToString(buffer_setparm[:21+12]))
 	w.Write([]byte("{status:'0'}"))
 	return
 
@@ -643,12 +655,12 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	Page := r.FormValue("Page")
 	Callfunc := r.FormValue("Callback")
 	if len(r.Form["DeviceNO"]) <= 0 || len(r.Form["Page"]) <= 0 || len(r.Form["Callback"]) <= 0 {
-		glog.V(3).Infoln("GetSearchDevices请求参数缺失")
+		glog.V(1).Infoln("GetSearchDevices请求参数缺失")
 		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1001}")))
 		return
 	}
 	if len(FirmSerial) <= 0 || len(Page) <= 0 || len(Callfunc) <= 0 {
-		glog.V(3).Infoln("GetSearchDevices请求参数内容不准确")
+		glog.V(1).Infoln("GetSearchDevices请求参数内容不准确")
 		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1002}")))
 		return
 	}
@@ -657,7 +669,7 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	var devicestatuses []CONNINFO
 	var devicestatusespage []CONNINFO
 	if len(linesinfos) <= 0 {
-		glog.V(2).Infoln("linesinfos为空，表示没有设备连接上来")
+		glog.V(1).Infoln("linesinfos为空，表示没有设备连接上来")
 		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1003}")))
 		return
 	}
@@ -675,7 +687,7 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 
 	}
 	if flagnoget == 0 {
-		glog.V(2).Infoln("没有找到该设备，表示该设备没有连接上来")
+		glog.V(1).Infoln("没有找到该设备，表示该设备没有连接上来")
 		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1003}")))
 		return
 	}
@@ -689,12 +701,12 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	sdbackret.PageAll = pagesfromds
 	tmpa, err := strconv.Atoi(Page)
 	if err != nil {
-		glog.V(2).Infoln("Page非数字")
+		glog.V(1).Infoln("Page非数字")
 		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1006}")))
 		return
 	}
 	if tmpa <= 0 {
-		glog.V(2).Infoln("Page不能小于等于0")
+		glog.V(1).Infoln("Page不能小于等于0")
 		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1000}")))
 		return
 	}
@@ -719,19 +731,20 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 
 	b, err := json.Marshal(sdbackret)
 	if err != nil {
-		glog.V(2).Infoln("json编码问题sdbackret", err)
+		glog.V(1).Infoln("json编码问题sdbackret", err)
 		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1005}")))
 		return
 	}
 
 	retstr := fmt.Sprintf("%s(%s);", Callfunc, string(b))
-	glog.V(4).Infoln(retstr)
+	glog.V(5).Infoln(retstr)
 	w.Write([]byte(retstr))
 }
 
 var CountInPerFrame int
 var session *mgo.Session
 var c *mgo.Collection
+var mongohost *string
 
 func main() {
 	CountInPerFrame = 256
@@ -742,9 +755,10 @@ func main() {
 	//defer session.Close()
 	sockport := flag.Int("p", 48080, "socket server port")
 	webport := flag.Int("wp", 58080, "socket server port")
+	mongohost = flag.String("h", "127.0.0.1", "ip of mongodb server")
 	flag.Parse()
 
-	session, _ = dbopen()
+	session, _ = dbopen(*mongohost)
 	c = session.DB("heart").C("info")
 
 	go SocketServer(fmt.Sprintf("%d", *sockport))
@@ -945,7 +959,7 @@ func DealWithBeatHeart(buffer []byte, n int) int {
 
 	ret := isfoundserialinpool(buffer)
 	if ret == -1 {
-		glog.V(3).Infoln("客户端没有连接上")
+		glog.V(1).Infoln("客户端没有连接上")
 
 		return 1
 	}
@@ -963,7 +977,7 @@ func DealWithBeatHeart(buffer []byte, n int) int {
 
 		return 2
 	}
-	glog.V(3).Infoln("成功发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12+12]), sendcount)
+	glog.V(4).Infoln("成功发送心跳返回数据包", hex.EncodeToString(buffer_heartback[:12+12]), sendcount)
 	return 0
 }
 
