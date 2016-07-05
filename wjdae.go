@@ -17,7 +17,7 @@ import (
 
 	"net"
 	"net/http"
-	"os"
+
 	"strings"
 	"time"
 
@@ -89,18 +89,21 @@ func dbInsertheart(StrucPack PackageStruct) {
 func SocketServer(sockport string) {
 
 	netListen, err := net.Listen("tcp", ":"+sockport)
-	CheckError(err)
+	if err != nil {
+		glog.V(1).Infoln("Listen出错，可能端口占用：", sockport)
+		return
+	}
 
 	defer netListen.Close()
 
-	Log("后台服务启动于端口 " + sockport)
+	glog.Infoln("后台服务启动于端口 " + sockport)
 	for {
 		conn, err := netListen.Accept()
 		if err != nil {
 			continue
 		}
 
-		Log(conn.RemoteAddr().String(), " tcp connect success")
+		glog.V(2).Infoln(conn.RemoteAddr().String(), "->", "TCP连接成功")
 		go handleConnection(conn)
 	}
 
@@ -1016,13 +1019,11 @@ func handleConnection(conn net.Conn) {
 	for {
 		n, err := conn.Read(buffer)
 		if err != nil {
-			Log(conn.RemoteAddr().String(), "连接出错: ", err)
+			glog.V(1).Infoln(conn.RemoteAddr().String(), "连接出错: ", err)
 			return
 		}
 
-		Log(conn.RemoteAddr().String(), "receive data length:", n)
-		Log(conn.RemoteAddr().String(), "receive data:", hex.EncodeToString(buffer[:n]))
-		//Log(conn.RemoteAddr().String(), "receive data string:", string(buffer[:n]))
+		glog.V(5).Infoln(conn.RemoteAddr().String(), "->", hex.EncodeToString(buffer[:n]), n)
 
 		ret := isfoundserialinpool(buffer)
 		if ret == -1 {
@@ -1051,16 +1052,5 @@ func handleConnection(conn net.Conn) {
 		DealWithPreUpdateFirm(buffer, n)
 		DealWithUpdateFirm(buffer, n)
 
-	}
-}
-
-func Log(v ...interface{}) {
-	glog.Info(v...)
-}
-
-func CheckError(err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-		os.Exit(1)
 	}
 }
