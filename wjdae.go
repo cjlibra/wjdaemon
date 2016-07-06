@@ -128,6 +128,7 @@ type UPDATETASK struct {
 	DoTime         time.Time
 	ReportChan     chan int
 	NumNowPart     int
+	flagstop       int
 }
 
 var updatefirmtasks []UPDATETASK
@@ -161,19 +162,21 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 			return -1, err
 		}
 
-		a0, _ := strconv.Atoi(line[1:2])
-		a1, _ := strconv.Atoi(line[2:3])
-		aa := (a0*16 + a1) * 2
+		aa1, err := strconv.ParseInt(string(line[1:3]), 16, 0)
+		aa := int(aa1)
+		if err != nil {
+			return -4, err
+		}
 		if bytes.Equal([]byte(line[7:7+2]), bb[:2]) != true {
 			continue
 		}
-		b, err := hex.DecodeString(line[9 : 9+aa])
+		b, err := hex.DecodeString(line[9 : 9+aa*2])
 		if err != nil {
 			glog.V(1).Infoln("无法hex.DecodeString")
 			return -3, err
 		}
-		copy(firmbuf[firmbufcount:firmbufcount+aa/2], b)
-		firmbufcount = firmbufcount + aa/2
+		copy(firmbuf[firmbufcount:firmbufcount+aa], b)
+		firmbufcount = firmbufcount + aa
 
 	}
 	return firmbufcount, nil
@@ -208,11 +211,15 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	firmbuf := make([]byte, 1024*1024)
 
 	firmnum, err := ReadFromStdFile(file, firmbuf)
+
 	if firmnum <= 0 {
 		glog.V(1).Infoln("Firm文件读取失败", firmnum)
 		w.Write([]byte("{status:'1005'}"))
 		return
 	}
+	//glog.V(6).Infoln("文件内容", firmnum, hex.EncodeToString(firmbuf[:firmnum]))
+	//ioutil.WriteFile("sss.bin", firmbuf[:firmnum], 0744)
+
 	var oneupdatefirmtask UPDATETASK
 	oneupdatefirmtask.FirmFileBuf = firmbuf
 
@@ -290,6 +297,22 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	return
 }
 func updatefirmstart(poolgetnum int, no int) {
+	defer func() {
+		glog.V(2).Infoln("升级进程退出")
+		updatefirmtasks[no].flagstop = 0
+		updatefirmtasks[no].Procedure = 0
+		updatefirmtasks[no].NumNowPart = 0
+		updatefirmtasks[no].PartPercent = 0
+		updatefirmtasks[no].DoTime = time.Now().Local()
+		updatefirmtasks[no].WholeChecksum = 0
+		updatefirmtasks[no].FirmFileCount = 0
+	}()
+
+	if updatefirmtasks[no].flagstop == 1 {
+		glog.V(2).Infoln("升级进程开头退出")
+		return
+	}
+
 	var rp int
 	select {
 	case rp = <-updatefirmtasks[no].ReportChan:
@@ -313,7 +336,10 @@ func updatefirmstart(poolgetnum int, no int) {
 	btmp := make([]byte, 2)
 	i := 0
 	for i = 0; i < FrameCount; i++ {
-
+		if updatefirmtasks[no].flagstop == 1 {
+			glog.V(2).Infoln("升级进程循环中退出")
+			return
+		}
 		addfilesize = (i + 1) * CountInPerFrame
 		if addfilesize >= updatefirmtasks[no].FirmFileCount {
 			SizeinPerPack = uint16(updatefirmtasks[no].FirmFileCount - (addfilesize - CountInPerFrame))
@@ -377,6 +403,34 @@ func updatefirmstart(poolgetnum int, no int) {
 		updatefirmtasks[no].Procedure = 0
 	}
 
+}
+func stopupdateprocedure(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+	FirmSerial := r.FormValue("FirmSerial")
+	if len(r.Form["FirmSerial"]) <= 0 {
+		glog.V(1).Infoln("FirmSerial请求参数缺失")
+		w.Write([]byte("{status:'1001'}"))
+		return
+	}
+	if len(FirmSerial) != 18 {
+		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
+		w.Write([]byte("{status:'1002'}"))
+		return
+	}
+	binFirmSerial := []byte(FirmSerial)
+	for idindex, value := range updatefirmtasks {
+		if bytes.Equal(value.FirmSerial[:18], binFirmSerial[:18]) == true {
+			updatefirmtasks[idindex].flagstop = 1
+
+			//updatefirmtasks[idindex].ReportChan = -3
+			//updatefirmtasks[idindex].FirmFileBuf = []byte{}
+
+			break
+		}
+	}
+	w.Write([]byte("{status:'0'}"))
+	return
 }
 func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
@@ -461,29 +515,31 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	return
 }
 func updatefirmafter(w http.ResponseWriter, r *http.Request) {
-	strformat := `{
-		FirmSerial :'%s',
-		Procedure : %d ,	
-		FirmFileCount : %d , 
-		AllFramesCount : %d ,
-		PartPercent    : %d ,
-		WholeChecksum  '%02X' ,
-		DoTime         '%s'
-	 }`
-	var alllinestrs []string
-	for _, value := range updatefirmtasks {
-		onelinestr := fmt.Sprintf(strformat, string(value.FirmSerial[:6+12]),
-			value.Procedure,
-			value.FirmFileCount,
-			value.AllFramesCount,
-			value.PartPercent,
-			value.WholeChecksum,
-			value.DoTime.Local().String())
+	type OUTUPDATE struct {
+		FirmSerial     [18]byte
+		Procedure      int
+		FirmFileCount  int
+		AllFramesCount int
+		PartPercent    int
+		WholeChecksum  byte
+		DoTime         time.Time
+	}
+	var stroutupdate OUTUPDATE
+	var stroutupdates []OUTUPDATE
 
-		alllinestrs = append(alllinestrs, onelinestr)
+	for _, value := range updatefirmtasks {
+		copy(stroutupdate.FirmSerial[:18], value.FirmSerial[:6+12])
+		stroutupdate.Procedure = value.Procedure
+		stroutupdate.FirmFileCount = value.FirmFileCount
+		stroutupdate.AllFramesCount = value.AllFramesCount
+		stroutupdate.PartPercent = value.PartPercent
+		stroutupdate.WholeChecksum = value.WholeChecksum
+		stroutupdate.DoTime = value.DoTime.Local()
+
+		stroutupdates = append(stroutupdates, stroutupdate)
 	}
 
-	b, err := json.Marshal(alllinestrs)
+	b, err := json.Marshal(stroutupdates)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题alllinestrs", err)
 		w.Write([]byte("{status:'1001'}"))
@@ -768,6 +824,7 @@ func main() {
 
 	http.HandleFunc("/updatefirmafter", updatefirmafter)
 	http.HandleFunc("/updatefirm", updatefirm)
+	http.HandleFunc("/stopupdateprocedure", stopupdateprocedure)
 	http.HandleFunc("/getparmfromfrontafter", getparmfromfrontafter)
 	http.HandleFunc("/getparmfromfront", getparmfromfront)
 
@@ -824,7 +881,7 @@ func DealWithUpdateFirm(buffer []byte, n int) int {
 			updatefirmtasks[num].ReportChan <- -2 //反馈不成功，又是0从头开始，直接出错处理
 		}
 	} else {
-		updatefirmtasks[num].ReportChan <- (xuhao + 1)
+		updatefirmtasks[num].ReportChan <- xuhao
 		yusu := uint(updatefirmtasks[num].FirmFileCount % CountInPerFrame)
 		if yusu > 0 {
 			updatefirmtasks[num].PartPercent = xuhao * 100 / (updatefirmtasks[num].FirmFileCount/CountInPerFrame + 1)
