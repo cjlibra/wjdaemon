@@ -389,10 +389,8 @@ func updatefirmstart(poolgetnum int, no int) {
 		if rp < 0 {
 			return
 		}
-		if rp <= i {
-			i = rp - 1
-			continue
-		}
+
+		i = rp - 1
 
 	}
 	if i == FrameCount {
