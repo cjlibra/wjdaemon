@@ -183,6 +183,7 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 }
 func updatefirm(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(32 << 20)
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	//r.ParseForm()
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(r.Form["FirmSerial"]) <= 0 {
@@ -533,7 +534,7 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 	}
 	var stroutupdate OUTUPDATE
 	var stroutupdates []OUTUPDATE
-
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	for _, value := range updatefirmtasks {
 		copy(stroutupdate.FirmSerial[:18], value.FirmSerial[:6+12])
 		stroutupdate.Procedure = value.Procedure
