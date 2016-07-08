@@ -206,6 +206,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	file, _, err := r.FormFile("firmfile")
 	if err != nil {
 		http.Error(w, err.Error(), 500)
+		w.Write([]byte("{status:'1006'}"))
 		return
 	}
 	defer file.Close()
