@@ -288,6 +288,13 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		glog.V(3).Infoln("无法发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19+12]), sendcount)
 		w.Write([]byte("{status:'1005'}"))
+		updatefirmtasks[no].Procedure = 0
+		updatefirmtasks[no].FirmFileCount = 0
+		updatefirmtasks[no].PartPercent = 0
+
+		updatefirmtasks[no].WholeChecksum = 0
+		updatefirmtasks[no].FirmFileBuf = []byte{}
+		updatefirmtasks[no].AllFramesCount = 0
 		return
 	}
 
