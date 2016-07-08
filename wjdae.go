@@ -302,6 +302,7 @@ func updatefirmstart(poolgetnum int, no int) {
 		updatefirmtasks[no].flagstop = 0
 		updatefirmtasks[no].Procedure = 0
 		updatefirmtasks[no].NumNowPart = 0
+		updatefirmtasks[no].AllFramesCount = 0
 		updatefirmtasks[no].PartPercent = 0
 		updatefirmtasks[no].DoTime = time.Now().Local()
 		updatefirmtasks[no].WholeChecksum = 0
@@ -420,6 +421,7 @@ func stopupdateprocedure(w http.ResponseWriter, r *http.Request) {
 	for idindex, value := range updatefirmtasks {
 		if bytes.Equal(value.FirmSerial[:18], binFirmSerial[:18]) == true {
 			updatefirmtasks[idindex].flagstop = 1
+			updatefirmtasks[idindex].Procedure = 0
 
 			//updatefirmtasks[idindex].ReportChan = -3
 			//updatefirmtasks[idindex].FirmFileBuf = []byte{}
