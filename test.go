@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"math/big"
 	"strconv"
 	"time"
 )
@@ -31,6 +33,9 @@ type person struct {
 }
 
 func main() {
+	rnd, _ := rand.Int(rand.Reader, big.NewInt(10))
+	fmt.Println(rnd.Int64())
+	return
 	chc := time.After(3 * time.Second)
 	for {
 		select {
