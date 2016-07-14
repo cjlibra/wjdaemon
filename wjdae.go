@@ -815,6 +815,14 @@ var c *mgo.Collection
 var mongohost *string
 
 func main() {
+	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
+
+		err := recover()
+		glog.Info("程序崩溃了，等待30秒后再次启动： ", err)
+		time.Sleep(time.Second * 30)
+
+		main()
+	}()
 	CountInPerFrame = 256
 
 	NCPU := runtime.NumCPU()
