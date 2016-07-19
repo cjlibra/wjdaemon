@@ -45,31 +45,9 @@ func dbopen(mongohost string) (*mgo.Session, error) {
 }
 func dbInsertheart(StrucPack PackageStruct) {
 
-	// Optional. Switch the session to a monotonic behavior.
-	//session.SetMode(mgo.Monotonic, true)
-	/*
-		c := session.DB("test").C("people")
-		err = c.Insert(&Person{"Ale", "+55 53 8116 9639", [2]byte{0x64, 0x63}},
-			&Person{"Cla", "+55 53 8402 8510", [2]byte{0x98, 0x97}})
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		//result := Person{}
-		var result1 []Person
-		err = c.Find(bson.M{"name": "Ale"}).All(&result1)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		for i, value := range result1 {
-			fmt.Println("Phone:", value.Phone, i, value.Achar[0])
-		}
-	*/
 	for {
 		err := c.Insert(&StrucPack)
 		if err != nil {
-			//log.Fatal(err)
 
 			glog.V(1).Infoln("插入数据库有问题，有可能是数据库连接断了")
 
@@ -80,7 +58,7 @@ func dbInsertheart(StrucPack PackageStruct) {
 			c = session.DB("heart").C("info")
 
 		} else {
-			glog.V(2).Infoln("插入数据库有成功")
+			glog.V(2).Infoln("成功插入数据库")
 			break
 		}
 	}
@@ -749,6 +727,7 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 			devicestatus.Dotime = lineinfo.Dotime
 			devicestatus.FirmSerialno = lineinfo.FirmSerialno
 			devicestatus.Alive = lineinfo.Alive
+			devicestatus.HeartInfo = lineinfo.HeartInfo
 			devicestatuses = append(devicestatuses, devicestatus)
 			flagnoget = 1
 		}
@@ -1040,6 +1019,8 @@ func DealWithBeatHeart(buffer []byte, n int) int {
 
 		return 1
 	}
+	linesinfos[ret].HeartInfo = StrucPack
+
 	buffer_heartback := make([]byte, 256)
 	buffer_heartback[0] = 0xEE
 	buffer_heartback[1] = 0x81
@@ -1065,6 +1046,7 @@ type CONNINFO struct {
 	Clientport   string
 	Dotime       time.Time
 	Alive        int
+	HeartInfo    PackageStruct
 }
 
 var linesinfos []CONNINFO

@@ -34,25 +34,33 @@ type person struct {
 }
 
 func ff() {
-	fmt.Println("success")
-	f()
+
+	vv := "aa"
+	fmt.Println(vv[:3])
+
 }
 func f() {
 	fmt.Println("a")
-	panic(55)
+	ff()
 	fmt.Println("b")
 	fmt.Println("f")
 }
 
 func main() {
 
+	fmt.Println(time.Now().Local())
+	return
+
 	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
 		fmt.Println("c")
 		if err := recover(); err != nil {
 			fmt.Println(err) // 这里的err其实就是panic传入的内容，55
+			main()
+
+		} else {
+			fmt.Println("d")
 		}
-		fmt.Println("d")
-		main()
+
 	}()
 	f()
 
