@@ -1064,14 +1064,14 @@ func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 	cdb := session.DB("custom").C("info")
 	var customstring CUSTOMINFO
 	var customstrings []CUSTOMINFO
-	cdb.Find(bson.M{"FirmSerial": FirmSerial}).All(&customstrings)
+	cdb.Find(bson.M{"firmserial": FirmSerial}).All(&customstrings)
 	if len(customstrings) == 0 {
 		customstring.FirmSerial = FirmSerial
 		customstring.CustomInfo = CustomInfo
 
 		cdb.Insert(&customstring)
 	} else {
-		cdb.Update(bson.M{"FirmSerial": FirmSerial}, bson.M{"CustomInfo": CustomInfo})
+		cdb.Update(bson.M{"firmserial": FirmSerial}, bson.M{"$set" :bson.M{"custominfo": CustomInfo}})
 	}
 
 	glog.V(2).Infoln("SetCustomInfo成功")
