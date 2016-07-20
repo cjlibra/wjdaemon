@@ -1046,6 +1046,7 @@ func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 	type CUSTOMINFO struct {
 		FirmSerial string
 		CustomInfo string
+		TheTime    time.Time
 	}
 	r.ParseForm()
 	FirmSerial := r.FormValue("FirmSerial")
@@ -1068,10 +1069,11 @@ func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 	if len(customstrings) == 0 {
 		customstring.FirmSerial = FirmSerial
 		customstring.CustomInfo = CustomInfo
+		customstring.TheTime = time.Now().Local()
 
 		cdb.Insert(&customstring)
 	} else {
-		cdb.Update(bson.M{"firmserial": FirmSerial}, bson.M{"$set" :bson.M{"custominfo": CustomInfo}})
+		cdb.Update(bson.M{"firmserial": FirmSerial}, bson.M{"$set": bson.M{"custominfo": CustomInfo, "thetime": time.Now().Local()}})
 	}
 
 	glog.V(2).Infoln("SetCustomInfo成功")
