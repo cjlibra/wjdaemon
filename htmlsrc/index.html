@@ -52,7 +52,7 @@
   </form>
   <hr>
   
-  4 http://202.127.26.252/GetSearchDevices
+5 http://202.127.26.252/GetSearchDevicesbyheart
 <form action = "/GetSearchDevicesbyheart" method="post">
  <p>FirmSerial: <input type="text" name="DeviceNO" /></p>
   <p>Page: <input type="text" name="Page" /></p>
@@ -69,6 +69,16 @@
 	<p>ReadWriterStatus读写器状态: <input type="text" name="ReadWriterStatus" /></p>
 	<p>SysEnergy系统供电: <input type="text" name="SysEnergy" /></p>
 	<p>ServerIpPort后台ip地址和端口号1.1.1.1:11: <input type="text" name="ServerIpPort" /></p>
+  
+   <input type="submit" value="Submit" />
+  </form>
+  <hr>
+  
+6 http://202.127.26.252/SetCustomInfo
+<form action = "/SetCustomInfo" method="post">
+ <p>FirmSerial: <input type="text" name="FirmSerial" /></p>
+  <p>CustomInfo: <input type="text" name="CustomInfo" /></p>
+  
   
    <input type="submit" value="Submit" />
   </form>

@@ -23,7 +23,7 @@ import (
 
 	"github.com/golang/glog"
 	"gopkg.in/mgo.v2"
-	//"gopkg.in/mgo.v2/bson"
+	"gopkg.in/mgo.v2/bson"
 )
 
 func dbopen(mongohost string) (*mgo.Session, error) {
@@ -1042,6 +1042,42 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(retstr))
 }
 
+func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
+	type CUSTOMINFO struct {
+		FirmSerial string
+		CustomInfo string
+	}
+	r.ParseForm()
+	FirmSerial := r.FormValue("FirmSerial")
+	CustomInfo := r.FormValue("CustomInfo")
+
+	if len(r.Form["FirmSerial"]) <= 0 || len(r.Form["CustomInfo"]) <= 0 {
+		glog.V(1).Infoln("SetCustomInfo请求参数缺失")
+		w.Write([]byte("{status:1001}"))
+		return
+	}
+	if len(FirmSerial) <= 0 {
+		glog.V(1).Infoln("SetCustomInfo请求参数内容不准确")
+		w.Write([]byte("{status:1002}"))
+		return
+	}
+	cdb := session.DB("custom").C("info")
+	var customstring CUSTOMINFO
+	var customstrings []CUSTOMINFO
+	cdb.Find(bson.M{"FirmSerial": FirmSerial}).All(&customstrings)
+	if len(customstrings) == 0 {
+		customstring.FirmSerial = FirmSerial
+		customstring.CustomInfo = CustomInfo
+
+		cdb.Insert(&customstring)
+	} else {
+		cdb.Update(bson.M{"FirmSerial": FirmSerial}, bson.M{"CustomInfo": CustomInfo})
+	}
+
+	glog.V(2).Infoln("SetCustomInfo成功")
+	w.Write([]byte("{status:0}"))
+}
+
 var CountInPerFrame int
 var session *mgo.Session
 var c *mgo.Collection
@@ -1083,6 +1119,8 @@ func main() {
 
 	http.HandleFunc("/GetSearchDevices", GetSearchDevices)
 	http.HandleFunc("/GetSearchDevicesbyheart", GetSearchDevicesbyheart)
+
+	http.HandleFunc("/SetCustomInfo", SetCustomInfo)
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
 	glog.Info("WEB程序启动，开始监听" + fmt.Sprintf("%d", *webport) + "端口")
