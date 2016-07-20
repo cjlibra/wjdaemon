@@ -788,6 +788,260 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(retstr))
 }
 
+func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	FirmSerial := r.FormValue("DeviceNO")
+	Page := r.FormValue("Page")
+	Callfunc := r.FormValue("Callback")
+
+	SConnStatus := r.FormValue("ConnStatus")
+	SEquipID := r.FormValue("EquipID")
+	SDotime := r.FormValue("Dotime")
+	SFirmVersion := r.FormValue("FirmVersion")
+	SSoftVersion := r.FormValue("SoftVersion")
+	SInsideAntena0 := r.FormValue("InsideAntena0")
+	SInsideAntena1 := r.FormValue("InsideAntena1")
+	SOutsideAntena0 := r.FormValue("OutsideAntena0")
+	SOutsideAntena1 := r.FormValue("OutsideAntena1")
+	SPhoneNum := r.FormValue("PhoneNum")
+	SReadWriterStatus := r.FormValue("ReadWriterStatus")
+	SSysEnergy := r.FormValue("SysEnergy")
+	SServerIpPort := r.FormValue("ServerIpPort")
+
+	if len(r.Form["DeviceNO"]) <= 0 || len(r.Form["Page"]) <= 0 || len(r.Form["Callback"]) <= 0 {
+		glog.V(1).Infoln("GetSearchDevices请求参数缺失")
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1001}")))
+		return
+	}
+	if len(FirmSerial) <= 0 || len(Page) <= 0 || len(Callfunc) <= 0 {
+		glog.V(1).Infoln("GetSearchDevices请求参数内容不准确")
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1002}")))
+		return
+	}
+	var sdbackret SDBACK
+	var devicestatus CONNINFO
+	var devicestatuses []CONNINFO
+	var devicestatusespage []CONNINFO
+	if len(linesinfos) <= 0 {
+		glog.V(1).Infoln("linesinfos为空，表示没有设备连接上来")
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1003}")))
+		return
+	}
+	flagnoget := 0
+	a1 := true
+	a2 := true
+	a3 := true
+	a4 := true
+	a5 := true
+	a6 := true
+	a7 := true
+	a8 := true
+	a9 := true
+	a10 := true
+	a11 := true
+	for _, lineinfo := range linesinfos {
+		if strings.Contains(string(lineinfo.FirmSerialno[:18]), FirmSerial) == true {
+
+			if len(SConnStatus) == 0 {
+				a1 = true
+			} else {
+				byteb, err := hex.DecodeString(SConnStatus)
+				if err != nil {
+					glog.V(1).Infoln("ConnStatus输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1004}")))
+					return
+				}
+				a1 = (lineinfo.HeartInfo.ConnStatus == byteb[0])
+
+			}
+			if len(SEquipID) == 0 {
+				a2 = true
+			} else {
+				a2 = lineinfo.HeartInfo.EquipID == SEquipID
+			}
+
+			if len(SDotime) == 0 {
+				a3 = true
+			} else {
+				the_time, err := time.Parse("2006-01-02 15:04:05", SDotime)
+				if err != nil {
+					glog.V(1).Infoln("Dotime输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1005}")))
+					return
+				}
+				a3 = lineinfo.HeartInfo.Dotime.Before(the_time)
+			}
+			if len(SFirmVersion) == 0 {
+				a4 = true
+			} else {
+				byteb, err := hex.DecodeString(SFirmVersion)
+				if err != nil {
+					glog.V(1).Infoln("FirmVersion输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1006}")))
+					return
+				}
+				a4 = (lineinfo.HeartInfo.FirmVersion == string(byteb))
+			}
+
+			if len(SSoftVersion) == 0 {
+				a5 = true
+			} else {
+				byteb, err := hex.DecodeString(SSoftVersion)
+				if err != nil {
+					glog.V(1).Infoln("SoftVersion输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1007}")))
+					return
+				}
+				a5 = lineinfo.HeartInfo.SoftVersion == string(byteb)
+			}
+
+			if len(SInsideAntena0) == 0 || len(SInsideAntena1) == 0 {
+				a6 = true
+			} else {
+				inta, err := strconv.Atoi(SInsideAntena0)
+				if err != nil {
+					glog.V(1).Infoln("InsideAntena0输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1008}")))
+					return
+				}
+				intb, err := strconv.Atoi(SInsideAntena1)
+				if err != nil {
+					glog.V(1).Infoln("InsideAntena1输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1009}")))
+					return
+				}
+				a6 = int(lineinfo.HeartInfo.InsideAntena) >= inta && int(lineinfo.HeartInfo.InsideAntena) <= intb
+			}
+
+			if len(SOutsideAntena0) == 0 || len(SOutsideAntena1) == 0 {
+				a7 = true
+			} else {
+				inta, err := strconv.Atoi(SOutsideAntena0)
+				if err != nil {
+					glog.V(1).Infoln("OutsideAntena0输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1010}")))
+					return
+				}
+				intb, err := strconv.Atoi(SOutsideAntena1)
+				if err != nil {
+					glog.V(1).Infoln("OutsideAntena1输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1011}")))
+					return
+				}
+				a7 = int(lineinfo.HeartInfo.OutsideAntena) >= inta && int(lineinfo.HeartInfo.OutsideAntena) <= intb
+			}
+
+			if len(SPhoneNum) == 0 {
+				a8 = true
+			} else {
+				a8 = lineinfo.HeartInfo.PhoneNum == SPhoneNum
+			}
+
+			if len(SReadWriterStatus) == 0 {
+				a9 = true
+			} else {
+				byteb, err := hex.DecodeString(SReadWriterStatus)
+				if err != nil {
+					glog.V(1).Infoln("ReadWriterStatus输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1012}")))
+					return
+				}
+				a9 = lineinfo.HeartInfo.ReadWriterStatus == byteb[0]
+			}
+
+			if len(SSysEnergy) == 0 {
+				a10 = true
+			} else {
+				byteb, err := hex.DecodeString(SSysEnergy)
+				if err != nil {
+					glog.V(1).Infoln("SysEnergy输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1013}")))
+					return
+				}
+				a10 = lineinfo.HeartInfo.SysEnergy == byteb[0]
+			}
+			if len(SServerIpPort) == 0 {
+				a11 = true
+			} else {
+				byteb, err := hex.DecodeString(SServerIpPort)
+				if err != nil {
+					glog.V(1).Infoln("ServerIpPort输入格式有误")
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1014}")))
+					return
+				}
+				a11 = lineinfo.HeartInfo.ServerIpPort == string(byteb)
+			}
+
+			if a1 && a2 && a3 && a4 && a5 && a6 && a7 && a8 && a9 && a10 && a11 != true {
+				continue
+			}
+
+			devicestatus.ClientIp = lineinfo.ClientIp
+			devicestatus.Clientport = lineinfo.Clientport
+			devicestatus.Dotime = lineinfo.Dotime
+			devicestatus.FirmSerialno = lineinfo.FirmSerialno
+			devicestatus.Alive = lineinfo.Alive
+			devicestatus.HeartInfo = lineinfo.HeartInfo
+			devicestatuses = append(devicestatuses, devicestatus)
+			flagnoget = 1
+		}
+
+	}
+	if flagnoget == 0 {
+		glog.V(1).Infoln("没有找到该设备，表示该设备没有连接上来")
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1023}")))
+		return
+	}
+	pagesfromds := 0
+	countsfromds := len(devicestatuses)
+	if countsfromds%200 == 0 {
+		pagesfromds = countsfromds / 200
+	} else {
+		pagesfromds = countsfromds/200 + 1
+	}
+	sdbackret.PageAll = pagesfromds
+	tmpa, err := strconv.Atoi(Page)
+	if err != nil {
+		glog.V(1).Infoln("Page非数字")
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1026}")))
+		return
+	}
+	if tmpa <= 0 {
+		glog.V(1).Infoln("Page不能小于等于0")
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1020}")))
+		return
+	}
+
+	if tmpa > pagesfromds {
+		sdbackret.CurrentPage = pagesfromds
+	} else {
+		sdbackret.CurrentPage = tmpa
+	}
+	sdbackret.Status = 0
+
+	countsonnextpage := 0
+	if sdbackret.CurrentPage*200 > countsfromds {
+		countsonnextpage = countsfromds
+	} else {
+		countsonnextpage = sdbackret.CurrentPage * 200
+	}
+	for i := (sdbackret.CurrentPage - 1) * 200; i < countsonnextpage; i++ {
+		devicestatusespage = append(devicestatusespage, devicestatuses[i])
+	}
+	sdbackret.Data = devicestatusespage
+
+	b, err := json.Marshal(sdbackret)
+	if err != nil {
+		glog.V(1).Infoln("json编码问题sdbackret", err)
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1025}")))
+		return
+	}
+
+	retstr := fmt.Sprintf("%s(%s);", Callfunc, string(b))
+	glog.V(5).Infoln(retstr)
+	w.Write([]byte(retstr))
+}
+
 var CountInPerFrame int
 var session *mgo.Session
 var c *mgo.Collection
@@ -828,6 +1082,7 @@ func main() {
 	http.HandleFunc("/setparmtofront", setparmtofront)
 
 	http.HandleFunc("/GetSearchDevices", GetSearchDevices)
+	http.HandleFunc("/GetSearchDevicesbyheart", GetSearchDevicesbyheart)
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
 	glog.Info("WEB程序启动，开始监听" + fmt.Sprintf("%d", *webport) + "端口")

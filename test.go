@@ -47,7 +47,10 @@ func f() {
 }
 
 func main() {
-
+	cx := []byte{12, 13, 14}
+	cx1 := []byte{12, 13, 14}
+	fmt.Println(string(cx) == string(cx1))
+	return
 	fmt.Println(time.Now().Local())
 	return
 

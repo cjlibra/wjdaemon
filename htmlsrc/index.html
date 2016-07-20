@@ -40,13 +40,35 @@
              
             <input type="SUBMIT" value="stop">
         </form>
-		
+<hr>		
 		
 4 http://202.127.26.252/GetSearchDevices
 <form action = "/GetSearchDevices" method="post">
  <p>FirmSerial: <input type="text" name="DeviceNO" /></p>
   <p>Page: <input type="text" name="Page" /></p>
   <p>Callback: <input type="text" name="Callback" /></p>
+  
+   <input type="submit" value="Submit" />
+  </form>
+  <hr>
+  
+  4 http://202.127.26.252/GetSearchDevices
+<form action = "/GetSearchDevicesbyheart" method="post">
+ <p>FirmSerial: <input type="text" name="DeviceNO" /></p>
+  <p>Page: <input type="text" name="Page" /></p>
+  <p>Callback: <input type="text" name="Callback" /></p>
+  <p>...</p>
+   <p>ConnStatus网络连接状态: <input type="text" name="ConnStatus" /></p>
+   <p>EquipID设备ID号: <input type="text" name="EquipID" /></p>
+   <p>Dotime: <input type="datetime" name="Dotime" /></p>
+   <p>FirmVersion硬件版本号: <input type="text" name="FirmVersion" /></p>
+    <p>SoftVersion软件版本号: <input type="text" name="SoftVersion" /></p>
+    <p>InsideAntena0内部天线阈值: <input type="text" name="InsideAntena0" />InsideAntena1内部天线阈值: <input type="text" name="InsideAntena1" /></p>
+	<p>OutsideAntena0外部天线阈值: <input type="text" name="OutsideAntena0" />OutsideAntena1外部天线阈值: <input type="text" name="OutsideAntena1" /></p>
+	<p>PhoneNum电话号码: <input type="text" name="PhoneNum" /></p>
+	<p>ReadWriterStatus读写器状态: <input type="text" name="ReadWriterStatus" /></p>
+	<p>SysEnergy系统供电: <input type="text" name="SysEnergy" /></p>
+	<p>ServerIpPort后台ip地址和端口号1.1.1.1:11: <input type="text" name="ServerIpPort" /></p>
   
    <input type="submit" value="Submit" />
   </form>
