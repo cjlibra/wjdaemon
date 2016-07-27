@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
 	w "h"
@@ -47,6 +48,23 @@ func f() {
 }
 
 func main() {
+	s := "sha1 this string"
+
+	h := sha1.New()
+
+	h.Write([]byte(s))
+
+	bs := h.Sum(nil)
+
+	fmt.Println(s)
+	fmt.Printf("%x\n", bs)
+
+	return
+	//hs := sha1.New()
+	//io.Copy(hs, file)
+	//hashString := hs.Sum(nil)
+
+	return
 	cx := []byte{12, 13, 14}
 	cx1 := []byte{12, 13, 14}
 	fmt.Println(string(cx) == string(cx1))

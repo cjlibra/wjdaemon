@@ -3,12 +3,16 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+
 	"io"
+	"os"
 
 	"runtime"
 
@@ -159,6 +163,92 @@ func ReadFromStdFile(file multipart.File, firmbuf []byte) (int, error) {
 	}
 	return firmbufcount, nil
 }
+func updatefirming(firmbuf []byte, firmnum int, binFirmSerial []byte) {
+
+	var oneupdatefirmtask UPDATETASK
+	oneupdatefirmtask.FirmFileBuf = firmbuf
+
+	copy(oneupdatefirmtask.FirmSerial[:6+12], binFirmSerial[:6+12])
+	oneupdatefirmtask.Procedure = 1
+
+	oneupdatefirmtask.FirmFileCount = firmnum
+
+	oneupdatefirmtask.WholeChecksum = CalcChecksum(firmbuf, firmnum+1)
+	oneupdatefirmtask.PartPercent = 0
+	oneupdatefirmtask.DoTime = time.Now().Local()
+	oneupdatefirmtask.AllFramesCount = oneupdatefirmtask.FirmFileCount / CountInPerFrame
+	if oneupdatefirmtask.FirmFileCount%CountInPerFrame > 0 {
+		oneupdatefirmtask.AllFramesCount = oneupdatefirmtask.AllFramesCount + 1
+	}
+	no := searchtask(binFirmSerial)
+	if no == -1 {
+		updatefirmtasks = append(updatefirmtasks, oneupdatefirmtask)
+		no = len(updatefirmtasks) - 1
+		updatefirmtasks[no].ReportChan = make(chan int)
+	} else {
+		if updatefirmtasks[no].Procedure != 0 {
+			glog.V(1).Infoln("客户端正在升级中，不要重复升级")
+			//w.Write([]byte("{status:'1004'}"))
+			return
+		}
+		updatefirmtasks[no].DoTime = time.Now().Local()
+		updatefirmtasks[no].FirmFileCount = oneupdatefirmtask.FirmFileCount
+		updatefirmtasks[no].PartPercent = oneupdatefirmtask.PartPercent
+		updatefirmtasks[no].Procedure = oneupdatefirmtask.Procedure
+		updatefirmtasks[no].WholeChecksum = oneupdatefirmtask.WholeChecksum
+		updatefirmtasks[no].FirmFileBuf = oneupdatefirmtask.FirmFileBuf
+		updatefirmtasks[no].AllFramesCount = oneupdatefirmtask.AllFramesCount
+	}
+
+	poolgetnum := foundserialinpoolbynum(binFirmSerial)
+	if poolgetnum == -1 {
+		glog.V(1).Infoln("客户端未连接上来")
+		//w.Write([]byte("{status:'1005'}"))
+		return
+	}
+	framenum := firmnum / CountInPerFrame
+	if firmnum%CountInPerFrame > 0 {
+		framenum = framenum + 1
+	}
+	btmp := make([]byte, 2)
+	binary.LittleEndian.PutUint16(btmp, uint16(framenum))
+
+	buffer_updateparm := make([]byte, 256)
+	buffer_updateparm[0] = 0xEE
+	buffer_updateparm[1] = 0x83
+	copy(buffer_updateparm[2:2+6+12], binFirmSerial[:6+12])
+	buffer_updateparm[8+12] = 0
+	buffer_updateparm[9+12] = 7
+	buffer_updateparm[10+12] = btmp[1]
+	buffer_updateparm[11+12] = btmp[0]
+	buffer_updateparm[12+12] = CalcChecksum(firmbuf, firmnum+1)
+	buffer_updateparm[13+12] = 0
+	buffer_updateparm[14+12] = 0
+	buffer_updateparm[15+12] = 0
+	buffer_updateparm[16+12] = 0
+	buffer_updateparm[17+12] = 0 //close
+	buffer_updateparm[18+12] = CalcChecksum(buffer_updateparm, 19+12)
+
+	sendcount, err := linesinfos[poolgetnum].Conn.Write(buffer_updateparm[:19+12])
+	if err != nil {
+		glog.V(3).Infoln("无法发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19+12]), sendcount)
+		//	w.Write([]byte("{status:'1005'}"))
+		updatefirmtasks[no].Procedure = 0
+		updatefirmtasks[no].FirmFileCount = 0
+		updatefirmtasks[no].PartPercent = 0
+
+		updatefirmtasks[no].WholeChecksum = 0
+		updatefirmtasks[no].FirmFileBuf = []byte{}
+		updatefirmtasks[no].AllFramesCount = 0
+		return
+	}
+
+	go updatefirmstart(poolgetnum, no)
+	glog.V(4).Infoln("成功发送0x83数据包", hex.EncodeToString(buffer_updateparm[:19+12]), sendcount)
+	//w.Write([]byte("{status:'0'}"))
+	return
+
+}
 func updatefirm(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(32 << 20)
 	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
@@ -183,7 +273,7 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 	}
 	file, _, err := r.FormFile("firmfile")
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		glog.V(1).Infoln("文件上传失败")
 		w.Write([]byte("{status:'1006'}"))
 		return
 	}
@@ -1080,6 +1170,198 @@ func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("{status:0}"))
 }
 
+func UploadFiletoServer(w http.ResponseWriter, r *http.Request) {
+	type FIRMFILEINFONOID struct {
+		Version          string
+		FileNameWithPath string
+		Comments         string
+		hashString       string
+		CreateTime       time.Time
+	}
+	var Firmfileinfo FIRMFILEINFONOID
+	cupload := session.DB("upload").C("info")
+	r.ParseMultipartForm(32 << 20)
+	//r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+
+	Version := r.FormValue("Version")
+	if len(r.Form["Version"]) <= 0 {
+		glog.V(1).Infoln("Version请求参数缺失")
+		w.Write([]byte("{status:'1001'}"))
+		return
+	}
+	Comments := r.FormValue("Comments")
+	if len(r.Form["Comments"]) <= 0 {
+		glog.V(1).Infoln("Comments请求参数缺失")
+		w.Write([]byte("{status:'1002'}"))
+		return
+	}
+	if len(Version) < 6 {
+		glog.V(1).Infoln("Version请求参数内容缺失")
+		w.Write([]byte("{status:'1003'}"))
+		return
+	}
+
+	if "POST" != r.Method {
+		glog.V(1).Infoln("请求模式：", r.Method)
+		w.Write([]byte("{status:'1004'}"))
+		return
+	}
+	file, handle, err := r.FormFile("firmfile")
+	if err != nil {
+
+		glog.V(1).Infoln("上传文件出现问题")
+		w.Write([]byte("{status:'1006'}"))
+		return
+	}
+
+	FirmFileOnServerDir := "./upload/" + handle.Filename + time.Now().Local().String()
+	FirmFileOnServerDir = strings.Replace(FirmFileOnServerDir, ":", "：", -1)
+	f, err := os.OpenFile(FirmFileOnServerDir, os.O_WRONLY|os.O_CREATE, 0666)
+	io.Copy(f, file)
+	if err != nil {
+		glog.V(1).Infoln("无法生成文件于服务器上:", FirmFileOnServerDir)
+		w.Write([]byte("{status:'1007'}"))
+		return
+	}
+	defer f.Close()
+	defer file.Close()
+
+	hs := sha1.New()
+	io.Copy(hs, file)
+	hashString := hs.Sum(nil)
+
+	Firmfileinfo.Comments = Comments
+	Firmfileinfo.Version = Version
+	Firmfileinfo.FileNameWithPath = FirmFileOnServerDir
+	Firmfileinfo.CreateTime = time.Now().Local()
+	Firmfileinfo.hashString = hex.EncodeToString(hashString)
+	cupload.Insert(&Firmfileinfo)
+
+	glog.V(2).Infoln("上传文件成功：", FirmFileOnServerDir)
+	w.Write([]byte("{status:0}"))
+
+}
+
+type FIRMFILEINFO struct {
+	Id               bson.ObjectId `bson:"_id"`
+	Version          string
+	FileNameWithPath string
+	Comments         string
+	hashString       string
+	CreateTime       time.Time
+}
+
+func GetUploadFileOnServerInfo(w http.ResponseWriter, r *http.Request) {
+
+	var firmfileInfos []FIRMFILEINFO
+	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+	cupload := session.DB("upload").C("info")
+	cupload.Find(nil).All(&firmfileInfos)
+
+	b, err := json.Marshal(firmfileInfos)
+	if err != nil {
+		glog.V(1).Infoln("json编码问题firmfileInfos", err)
+		w.Write([]byte("{status:1001}"))
+		return
+	}
+
+	glog.V(5).Infoln(string(b))
+	w.Write(b)
+
+}
+
+func DelUploadFileOnServerInfo(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+
+	id := r.FormValue("id")
+	if len(r.Form["id"]) <= 0 {
+		glog.V(1).Infoln("id请求参数缺失")
+		w.Write([]byte("{status:'1002'}"))
+		return
+	}
+	if len(id) <= 6 {
+		glog.V(1).Infoln("id请求参数内容缺失")
+		w.Write([]byte("{status:'1003'}"))
+		return
+	}
+
+	if bson.IsObjectIdHex(id) != true {
+		glog.V(1).Infoln("id不是标准格式")
+		w.Write([]byte("{status:'1005'}"))
+		return
+	}
+	objid := bson.ObjectIdHex(id)
+	cupload := session.DB("upload").C("info")
+	_, err := cupload.RemoveAll(bson.M{"_id": objid})
+	if err != nil {
+		glog.V(1).Infoln("无法删除")
+		w.Write([]byte("{status:'1004'}"))
+		return
+	}
+
+	glog.V(2).Infoln("成功删除")
+	w.Write([]byte("{status:'0'}"))
+
+}
+func UploadCmdString(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+
+	cmdstring := r.FormValue("cmdstring")
+	if len(r.Form["cmdstring"]) <= 0 {
+		glog.V(1).Infoln("cmdstring请求参数缺失")
+		w.Write([]byte("{status:'1002'}"))
+		return
+	}
+	if len(cmdstring) <= 6 {
+		glog.V(1).Infoln("cmdstring请求参数内容缺失")
+		w.Write([]byte("{status:'1003'}"))
+		return
+	}
+
+	glog.V(2).Infoln(cmdstring)
+
+	type CMDSTRSTRU struct {
+		Id          string
+		FirmSerials []string
+	}
+	var cmdstrstrus []CMDSTRSTRU
+	err := json.Unmarshal([]byte(cmdstring), &cmdstrstrus)
+	if err != nil {
+		glog.V(1).Infoln("json无法Unmarshal上传的命令字符串")
+		w.Write([]byte("{status:'1004'}"))
+		return
+	}
+	var firmfilefromdb FIRMFILEINFO
+	cupload := session.DB("upload").C("info")
+	for _, value := range cmdstrstrus {
+		err := cupload.Find(bson.M{"_id": value.Id}).One(&firmfilefromdb)
+		if err != nil {
+			glog.V(1).Infoln("upload数据库内找不到数据by:", value.Id)
+			w.Write([]byte("{status:'1005'}"))
+			return
+		}
+
+		fbuf, err := ioutil.ReadFile(firmfilefromdb.FileNameWithPath)
+		if err != nil {
+			glog.V(1).Infoln("无法读取文件：", firmfilefromdb.FileNameWithPath)
+			//w.Write([]byte("{status:'1006'}"))
+			continue
+		}
+		for _, firmserial := range value.FirmSerials {
+			go updatefirming(fbuf, len(fbuf), []byte(firmserial))
+			glog.V(2).Infoln("升级固件:", firmserial, firmfilefromdb.FileNameWithPath)
+		}
+
+	}
+
+	glog.V(2).Infoln("批量升级命令接收成功")
+	w.Write([]byte("{status:'0'}"))
+}
+
 var CountInPerFrame int
 var session *mgo.Session
 var c *mgo.Collection
@@ -1123,6 +1405,10 @@ func main() {
 	http.HandleFunc("/GetSearchDevicesbyheart", GetSearchDevicesbyheart)
 
 	http.HandleFunc("/SetCustomInfo", SetCustomInfo)
+	http.HandleFunc("/UploadFiletoServer", UploadFiletoServer)
+	http.HandleFunc("/GetUploadFileOnServerInfo", GetUploadFileOnServerInfo)
+	http.HandleFunc("/DelUploadFileOnServerInfo", DelUploadFileOnServerInfo)
+
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
 	glog.Info("WEB程序启动，开始监听" + fmt.Sprintf("%d", *webport) + "端口")

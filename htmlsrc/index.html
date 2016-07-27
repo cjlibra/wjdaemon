@@ -83,5 +83,29 @@
    <input type="submit" value="Submit" />
   </form>
   <hr>
+  
+7 http://202.127.26.252/UploadFiletoServer
+<form id="uploadFirm" method="POST" enctype="multipart/form-data" action="/UploadFiletoServer">
+            <p>固件上传服务器：</p>
+			<p>固件文件： <input type="FILE" id="file" name="firmfile" /></p>
+			<p>版本号: <input type="text" name="Version" /></p>
+			<p>备注: <input type="text" name="Comments" /></p>
+           
+            <input type="SUBMIT" value="upload">
+        </form>
+		  <hr>
+8 http://202.127.26.252/DelUploadFileOnServerInfo
+<form action = "/DelUploadFileOnServerInfo" method="post">
+ <p>_id: <input type="text" name="id" /></p>
+  
+  
+   <input type="submit" value="删除" />
+  </form>
+  <hr>
+9 http://202.127.26.252/GetUploadFileOnServerInfo
+  <form action = "/GetUploadFileOnServerInfo" method="post">
+    <input type="submit" value="获取信息" />
+  </form>
+  <hr>
 </body>
 </html>
