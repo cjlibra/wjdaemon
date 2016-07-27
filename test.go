@@ -48,6 +48,10 @@ func f() {
 }
 
 func main() {
+
+	aass := "as"
+	fmt.Println(fmt.Sprintf("%018s", aass))
+	return
 	s := "sha1 this string"
 
 	h := sha1.New()

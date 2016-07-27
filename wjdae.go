@@ -1338,7 +1338,11 @@ func UploadCmdString(w http.ResponseWriter, r *http.Request) {
 	var firmfilefromdb FIRMFILEINFO
 	cupload := session.DB("upload").C("info")
 	for _, value := range cmdstrstrus {
-		err := cupload.Find(bson.M{"_id": value.Id}).One(&firmfilefromdb)
+		if bson.IsObjectIdHex(value.Id) != true {
+			continue
+		}
+		oneobjid := bson.ObjectIdHex(value.Id)
+		err := cupload.Find(bson.M{"_id": oneobjid}).One(&firmfilefromdb)
 		if err != nil {
 			glog.V(1).Infoln("upload数据库内找不到数据by:", value.Id)
 			w.Write([]byte("{status:'1005'}"))
@@ -1351,7 +1355,17 @@ func UploadCmdString(w http.ResponseWriter, r *http.Request) {
 			//w.Write([]byte("{status:'1006'}"))
 			continue
 		}
+		if len(fbuf) > 1024*1024 {
+			glog.V(1).Infoln("文件太大：", firmfilefromdb.FileNameWithPath)
+			//w.Write([]byte("{status:'1006'}"))
+			continue
+		}
+		//firmbuf := make([]byte, 1024*1024)
+		//copy(firmbuf, fbuf)
 		for _, firmserial := range value.FirmSerials {
+			if len(firmserial) < 18 {
+				firmserial = fmt.Sprintf("%018s", firmserial)
+			}
 			go updatefirming(fbuf, len(fbuf), []byte(firmserial))
 			glog.V(2).Infoln("升级固件:", firmserial, firmfilefromdb.FileNameWithPath)
 		}
@@ -1408,6 +1422,7 @@ func main() {
 	http.HandleFunc("/UploadFiletoServer", UploadFiletoServer)
 	http.HandleFunc("/GetUploadFileOnServerInfo", GetUploadFileOnServerInfo)
 	http.HandleFunc("/DelUploadFileOnServerInfo", DelUploadFileOnServerInfo)
+	http.HandleFunc("/UploadCmdString", UploadCmdString)
 
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
