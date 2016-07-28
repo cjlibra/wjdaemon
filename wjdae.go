@@ -260,9 +260,11 @@ func updatefirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(FirmSerial) != 6+12 {
-		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
-		w.Write([]byte("{status:'1002'}"))
-		return
+		glog.V(2).Infoln("警告：FirmSerial请求参数内容长度不准确")
+
+		FirmSerial = fmt.Sprintf("%s", FirmSerial) + "                  "
+		FirmSerial = FirmSerial[:18]
+
 	}
 	binFirmSerial := []byte(FirmSerial)
 
@@ -489,10 +491,12 @@ func stopupdateprocedure(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) != 18 {
-		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
-		w.Write([]byte("{status:'1002'}"))
-		return
+	if len(FirmSerial) != 6+12 {
+		glog.V(2).Infoln("警告：FirmSerial请求参数内容长度不准确")
+
+		FirmSerial = fmt.Sprintf("%s", FirmSerial) + "                  "
+		FirmSerial = FirmSerial[:18]
+
 	}
 	binFirmSerial := []byte(FirmSerial)
 	for idindex, value := range updatefirmtasks {
@@ -649,9 +653,11 @@ func setparmtofrontafter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(FirmSerial) != 6+12 {
-		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
-		w.Write([]byte("{status:'1002'}"))
-		return
+		glog.V(2).Infoln("警告：FirmSerial请求参数内容长度不准确")
+
+		FirmSerial = fmt.Sprintf("%s", FirmSerial) + "                  "
+		FirmSerial = FirmSerial[:18]
+
 	}
 	binFirmSerial := []byte(FirmSerial)
 
@@ -697,8 +703,7 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1001'}"))
 		return
 	}
-	if len(FirmSerial) != 6+12 ||
-		len(Maskset) != 2 ||
+	if len(Maskset) != 2 ||
 		len(Outantenaset) != 2 ||
 		len(Inantenaset) != 2 ||
 		len(Monswitchset) != 2 ||
@@ -709,6 +714,14 @@ func setparmtofront(w http.ResponseWriter, r *http.Request) {
 		glog.V(1).Infoln("setparmtofront请求参数内容不准确")
 		w.Write([]byte("{status:'1002'}"))
 		return
+	}
+
+	if len(FirmSerial) != 6+12 {
+		glog.V(2).Infoln("警告：FirmSerial请求参数内容长度不准确")
+
+		FirmSerial = fmt.Sprintf("%s", FirmSerial) + "                  "
+		FirmSerial = FirmSerial[:18]
+
 	}
 
 	binFirmSerial := []byte(FirmSerial)
