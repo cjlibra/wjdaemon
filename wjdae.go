@@ -523,6 +523,15 @@ func getparmfromfrontafter(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:'1002'}"))
 		return
 	}
+	if len(FirmSerial) != 6+12 {
+		glog.V(2).Infoln("警告：FirmSerial请求参数内容长度不准确")
+		//w.Write([]byte("{status:'1002'}"))
+		//return
+
+		FirmSerial = fmt.Sprintf("%s", FirmSerial) + "                  "
+		FirmSerial = FirmSerial[:18]
+
+	}
 	binFirmSerial := []byte(FirmSerial)
 
 	if oneStrucPack.Refeshflag != 1 {
