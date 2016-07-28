@@ -1343,6 +1343,7 @@ func UploadCmdString(w http.ResponseWriter, r *http.Request) {
 	cupload := session.DB("upload").C("info")
 	for _, value := range cmdstrstrus {
 		if bson.IsObjectIdHex(value.Id) != true {
+			glog.V(1).Infoln("id数据格式不对:", value.Id)
 			continue
 		}
 		oneobjid := bson.ObjectIdHex(value.Id)
