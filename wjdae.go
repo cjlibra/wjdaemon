@@ -1719,7 +1719,7 @@ func handleConnection(conn net.Conn) {
 			linesinfos = append(linesinfos, onelineinfo)
 
 		} else {
-			if onelineinfo.Alive == 0 {
+			if linesinfos[ret].Alive == 0 {
 				linesinfos[ret].Dotime = time.Now().Local()
 			}
 			linesinfos[ret].Conn = conn
