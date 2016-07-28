@@ -559,9 +559,13 @@ func getparmfromfront(w http.ResponseWriter, r *http.Request) {
 	}
 	FirmSerial := r.FormValue("FirmSerial")
 	if len(FirmSerial) != 6+12 {
-		glog.V(1).Infoln("FirmSerial请求参数内容缺失")
-		w.Write([]byte("{status:'1002'}"))
-		return
+		glog.V(2).Infoln("警告：FirmSerial请求参数内容长度不准确")
+		//w.Write([]byte("{status:'1002'}"))
+		//return
+
+		FirmSerial = fmt.Sprintf("%s", FirmSerial) + "                  "
+		FirmSerial = FirmSerial[:18]
+
 	}
 	binFirmSerial := []byte(FirmSerial)
 
@@ -1364,7 +1368,8 @@ func UploadCmdString(w http.ResponseWriter, r *http.Request) {
 		//copy(firmbuf, fbuf)
 		for _, firmserial := range value.FirmSerials {
 			if len(firmserial) < 18 {
-				firmserial = fmt.Sprintf("%018s", firmserial)
+				firmserial = fmt.Sprintf("%s", firmserial) + "                  "
+				firmserial = firmserial[:18]
 			}
 			go updatefirming(fbuf, len(fbuf), []byte(firmserial))
 			glog.V(2).Infoln("升级固件:", firmserial, firmfilefromdb.FileNameWithPath)
@@ -1683,12 +1688,16 @@ func handleConnection(conn net.Conn) {
 			copy(onelineinfo.FirmSerialno[:6+12], buffer[2:2+6+12])
 			onelineinfo.ClientIp = conn.RemoteAddr().String()
 			onelineinfo.Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
-			onelineinfo.Dotime = time.Now().Local()
+			if onelineinfo.Alive == 0 {
+				onelineinfo.Dotime = time.Now().Local()
+			}
 			onelineinfo.Alive = 1
 			linesinfos = append(linesinfos, onelineinfo)
 
 		} else {
-			linesinfos[ret].Dotime = time.Now().Local()
+			if onelineinfo.Alive == 0 {
+				linesinfos[ret].Dotime = time.Now().Local()
+			}
 			linesinfos[ret].Conn = conn
 			linesinfos[ret].ClientIp = conn.RemoteAddr().String()
 			linesinfos[ret].Clientport = strings.Split(conn.RemoteAddr().String(), ":")[1]
