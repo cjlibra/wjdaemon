@@ -1221,7 +1221,7 @@ func UploadFiletoServer(w http.ResponseWriter, r *http.Request) {
 
 	FirmFileOnServerDir := "./upload/" + handle.Filename + time.Now().Local().String()
 	FirmFileOnServerDir = strings.Replace(FirmFileOnServerDir, ":", "-", -1)
-	FirmFileOnServerDir = strings.Replace(FirmFileOnServerDir, " ", "$", -1)
+	FirmFileOnServerDir = strings.Replace(FirmFileOnServerDir, " ", "_", -1)
 	f, err := os.OpenFile(FirmFileOnServerDir, os.O_WRONLY|os.O_CREATE, 0666)
 	io.Copy(f, file)
 	if err != nil {
