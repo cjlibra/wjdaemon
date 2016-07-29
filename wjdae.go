@@ -1670,6 +1670,7 @@ type CONNINFO struct {
 	ClientIp     string
 	Clientport   string
 	Dotime       time.Time
+	EndDotime    time.Time
 	Alive        int
 	HeartInfo    PackageStruct
 }
@@ -1690,7 +1691,9 @@ func handleConnection(conn net.Conn) {
 		for iindex, value := range linesinfos {
 			if value.Conn == conn {
 				value.Alive = 0
+
 				linesinfos[iindex].Alive = 0
+				linesinfos[iindex].EndDotime = time.Now().Local()
 
 			}
 		}
