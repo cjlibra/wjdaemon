@@ -907,6 +907,8 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 
 func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+
 	FirmSerial := r.FormValue("DeviceNO")
 	Page := r.FormValue("Page")
 	Callfunc := r.FormValue("Callback")
