@@ -841,6 +841,7 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 			devicestatus.ClientIp = lineinfo.ClientIp
 			devicestatus.Clientport = lineinfo.Clientport
 			devicestatus.Dotime = lineinfo.Dotime
+			devicestatus.EndDotime = lineinfo.EndDotime
 			devicestatus.FirmSerialno = lineinfo.FirmSerialno
 			devicestatus.Alive = lineinfo.Alive
 			devicestatus.HeartInfo = lineinfo.HeartInfo
