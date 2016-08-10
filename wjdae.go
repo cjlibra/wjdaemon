@@ -1336,6 +1336,21 @@ func DelUploadFileOnServerInfo(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("{status:'0'}"))
 
 }
+func GetTestLabelInfo(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+
+	b, err := json.Marshal(labelinfoouts)
+	if err != nil {
+		glog.V(1).Infoln("json编码问题labelinfoouts", err)
+		w.Write([]byte("{status:1001}"))
+		return
+	}
+
+	//glog.V(5).Infoln(string(b))
+	w.Write(b)
+
+}
 func UploadCmdString(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
@@ -1455,6 +1470,8 @@ func main() {
 	http.HandleFunc("/GetUploadFileOnServerInfo", GetUploadFileOnServerInfo)
 	http.HandleFunc("/DelUploadFileOnServerInfo", DelUploadFileOnServerInfo)
 	http.HandleFunc("/UploadCmdString", UploadCmdString)
+
+	http.HandleFunc("/GetTestLabelInfo", GetTestLabelInfo)
 
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
@@ -1769,6 +1786,60 @@ func dealwithdata(buffer []byte, ipstring string) {
 	}
 	glog.V(2).Infoln("data插入数据库成功")
 
+}
+
+type LABELINFOOUT struct {
+	LabelID      string
+	Dotime       time.Time
+	LabelSingles []LABELINFOSINGLE
+}
+type LABELINFOSINGLE struct {
+	Ipstring string
+	Rssi     string
+	Dotime   time.Time
+}
+
+var labelinfoouts []LABELINFOOUT
+
+func makedatainfoout(datainfo DATAINFO) {
+	var labelinfoout LABELINFOOUT
+	var labelinfosingle LABELINFOSINGLE
+	var labelinfosingles []LABELINFOSINGLE
+	for _, value := range datainfo.labelinfos {
+		seq := searchlabelin(value.labelid)
+		if seq == -1 {
+			labelinfoout.LabelID = value.labelid
+			labelinfosingle.Ipstring = datainfo.ipstring
+			labelinfosingle.Rssi = value.rssi
+			labelinfosingle.Dotime = time.Now().Local()
+			labelinfosingles = append(labelinfosingles, labelinfosingle)
+			labelinfoout.LabelSingles = labelinfosingles
+			labelinfoout.Dotime = time.Now().Local()
+			labelinfoouts = append(labelinfoouts, labelinfoout)
+		} else {
+			//labelinfoouts[seq].LabelID = value.labelid
+			for index1, value1 := range labelinfoouts[seq].LabelSingles {
+				if value1.Ipstring == datainfo.ipstring {
+					labelinfoouts[seq].LabelSingles[index1].Rssi = value.rssi
+					labelinfoouts[seq].LabelSingles[index1].Dotime = time.Now().Local()
+				} else {
+					labelinfosingle.Ipstring = datainfo.ipstring
+					labelinfosingle.Rssi = value.rssi
+					labelinfosingle.Dotime = time.Now().Local()
+					labelinfoouts[seq].LabelSingles = append(labelinfoouts[seq].LabelSingles, labelinfosingle)
+				}
+			}
+
+		}
+	}
+}
+func searchlabelin(labelid string) int {
+	for index, value := range labelinfoouts {
+		if value.LabelID == labelid {
+			return index
+		}
+	}
+	return -1
 }
 func handleConnection(conn net.Conn) {
 	var onelineinfo CONNINFO
