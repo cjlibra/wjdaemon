@@ -1336,9 +1336,38 @@ func DelUploadFileOnServerInfo(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("{status:'0'}"))
 
 }
+func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	//w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+
+	type TESTHOST struct {
+		Ipstring string
+		Port     string
+	}
+	var testhost TESTHOST
+	testhost.Ipstring = r.FormValue("ip")
+	testhost.Port = r.FormValue("port")
+	connstring := testhost.Ipstring + ":" + testhost.Port
+	conn, err := net.Dial("tcp", connstring)
+	if err != nil {
+		glog.V(1).Infoln("无法连接", connstring)
+		return
+	}
+
+	buffer := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buffer)
+		if err != nil {
+			glog.V(1).Infoln(conn.RemoteAddr().String(), "读取socket出错: ", err)
+			return
+		}
+		dealwithdata(buffer[0:n], testhost.Ipstring)
+	}
+
+}
 func GetTestLabelInfo(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+	//w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 
 	b, err := json.Marshal(labelinfoouts)
 	if err != nil {
@@ -1472,6 +1501,8 @@ func main() {
 	http.HandleFunc("/UploadCmdString", UploadCmdString)
 
 	http.HandleFunc("/GetTestLabelInfo", GetTestLabelInfo)
+
+	http.HandleFunc("/RunTestLabelServer", RunTestLabelServer)
 
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
