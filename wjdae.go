@@ -1354,14 +1354,47 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bb, err := hex.DecodeString("AA12FFFFFFFFFFFF0000000000000000000055EE")
+	if err != nil {
+		glog.V(1).Infoln("hex.DecodeString出错")
+		return
+	}
+	lenofbb := len(bb)
+	glog.V(1).Infoln("lenofbb:", lenofbb)
+	bb[1] = 0x15
+	glog.V(2).Infoln(connstring, "s->", hex.EncodeToString(bb))
+	bb[lenofbb-2] = crc8(bb[0 : lenofbb-2])
+	_, err = conn.Write(bb)
+	if err != nil {
+		glog.V(1).Infoln("发送监听启动包出错")
+		return
+	}
+	glog.V(2).Infoln(connstring, "->", hex.EncodeToString(bb))
 	buffer := make([]byte, 1024)
 	for {
-		n, err := conn.Read(buffer)
+		_, err := conn.Read(buffer)
 		if err != nil {
 			glog.V(1).Infoln(conn.RemoteAddr().String(), "读取socket出错: ", err)
 			return
 		}
-		dealwithdata(buffer[0:n], testhost.Ipstring)
+		bufferstrings := strings.Split(hex.EncodeToString(buffer), "aa97")
+		for _, bufferstring := range bufferstrings {
+			if len(bufferstring) <= 14 {
+				continue
+			}
+			n := len(bufferstring)
+			if bufferstring[n-2:n] != "ee" {
+				continue
+			}
+			bufferstringwithhead := "aa97" + bufferstring
+			bbuf, err := hex.DecodeString(bufferstringwithhead)
+			glog.V(2).Infoln(bufferstringwithhead)
+			if err != nil {
+				continue
+			}
+			dealwithdata(bbuf[0:], testhost.Ipstring)
+
+		}
 	}
 
 }
@@ -1738,6 +1771,7 @@ func isfoundserialinpool(buffer []byte) int {
 }
 func crc8(cmdBuf []byte) byte {
 	bufLen := len(cmdBuf)
+	glog.V(2).Infoln("bufLen:", bufLen, hex.EncodeToString(cmdBuf))
 	CRC8_Table := []byte{
 		0, 94, 188, 226, 97, 63, 221, 131, 194, 156, 126, 32, 163, 253, 31, 65,
 		157, 195, 33, 127, 252, 162, 64, 30, 95, 1, 227, 189, 62, 96, 130, 220,
@@ -1757,10 +1791,10 @@ func crc8(cmdBuf []byte) byte {
 		116, 42, 200, 150, 21, 75, 169, 247, 182, 232, 10, 84, 215, 137, 107, 53}
 	var crc8 byte = 0
 
-	for i := 0; bufLen > 0; bufLen-- {
-		crc8 = CRC8_Table[crc8^cmdBuf[0]]
-		i++ //查表得到CRC码
-		cmdBuf = cmdBuf[i:]
+	for i := 0; i < bufLen; i++ {
+		crc8 = CRC8_Table[crc8^cmdBuf[i]]
+		//查表得到CRC码
+		//cmdBuf1 = cmdBuf[i:]
 	}
 
 	return crc8
@@ -1786,7 +1820,7 @@ func dealwithdata(buffer []byte, ipstring string) {
 		glog.V(5).Infoln("数据包格式不对")
 		return
 	}
-	tmpcrc8 := crc8(buffer[0 : lenofbuf-2])
+	tmpcrc8 := crc8(buffer[1 : lenofbuf-2])
 	if tmpcrc8 != buffer[lenofbuf-2] {
 		glog.V(5).Infoln("数据包校验码不对")
 		return
@@ -1816,6 +1850,7 @@ func dealwithdata(buffer []byte, ipstring string) {
 		return
 	}
 	glog.V(2).Infoln("data插入数据库成功")
+	makedatainfoout(sdatainfo)
 
 }
 
