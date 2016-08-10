@@ -1377,6 +1377,7 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 			glog.V(1).Infoln(conn.RemoteAddr().String(), "读取socket出错: ", err)
 			return
 		}
+
 		bufferstrings := strings.Split(hex.EncodeToString(buffer), "aa97")
 		for _, bufferstring := range bufferstrings {
 			if len(bufferstring) <= 14 {
