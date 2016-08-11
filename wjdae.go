@@ -1351,6 +1351,7 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 	conn, err := net.Dial("tcp", connstring)
 	if err != nil {
 		glog.V(1).Infoln("无法连接", connstring)
+		w.Write([]byte("{status:'0',msg:'无法连接：" + connstring + "'}"))
 		return
 	}
 
@@ -1371,32 +1372,60 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 	}
 	glog.V(2).Infoln(connstring, "->", hex.EncodeToString(bb))
 	buffer := make([]byte, 1024)
-	for {
-		_, err := conn.Read(buffer)
-		if err != nil {
-			glog.V(1).Infoln(conn.RemoteAddr().String(), "读取socket出错: ", err)
-			return
-		}
-
-		bufferstrings := strings.Split(hex.EncodeToString(buffer), "aa97")
-		for _, bufferstring := range bufferstrings {
-			if len(bufferstring) <= 14 {
-				continue
-			}
-			n := len(bufferstring)
-			if bufferstring[n-2:n] != "ee" {
-				continue
-			}
-			bufferstringwithhead := "aa97" + bufferstring
-			bbuf, err := hex.DecodeString(bufferstringwithhead)
-			glog.V(2).Infoln(bufferstringwithhead)
+	go func() {
+		for {
+			_, err := conn.Read(buffer)
 			if err != nil {
-				continue
+				glog.V(1).Infoln(conn.RemoteAddr().String(), "读取socket出错: ", err)
+				return
 			}
-			dealwithdata(bbuf[0:], testhost.Ipstring)
 
+			bufferstrings := strings.Split(hex.EncodeToString(buffer), "eeaa97")
+			lenofbufferstrings := len(bufferstrings)
+			var bufferstringwithhead string
+			if lenofbufferstrings == 1 {
+				bufferstringwithhead = bufferstrings[0]
+				bbuf, err := hex.DecodeString(bufferstringwithhead)
+				glog.V(2).Infoln(bufferstringwithhead)
+				if err != nil {
+					continue
+				}
+				dealwithdata(bbuf[0:], testhost.Ipstring)
+			} else {
+				for nn, bufferstring := range bufferstrings {
+
+					if nn == 0 {
+						bufferstringwithhead = bufferstring + "ee"
+					} else {
+						if nn == lenofbufferstrings {
+							bufferstringwithhead = "aa97" + bufferstring
+						} else {
+							bufferstringwithhead = "aa97" + bufferstring + "ee"
+						}
+					}
+
+					if len(bufferstringwithhead) < 32 {
+						continue
+					}
+					n := len(bufferstringwithhead)
+					if bufferstringwithhead[n-2:n] != "ee" {
+						continue
+					}
+
+					bbuf, err := hex.DecodeString(bufferstringwithhead)
+					glog.V(5).Infoln(bufferstringwithhead)
+					if err != nil {
+						continue
+					}
+					dealwithdata(bbuf[0:], testhost.Ipstring)
+
+				}
+
+			}
 		}
-	}
+	}()
+
+	w.Write([]byte("{status:'0'}"))
 
 }
 func GetTestLabelInfo(w http.ResponseWriter, r *http.Request) {
@@ -1492,6 +1521,7 @@ var c *mgo.Collection
 var mongohost *string
 
 func main() {
+
 	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
 
 		err := recover()
@@ -1772,7 +1802,7 @@ func isfoundserialinpool(buffer []byte) int {
 }
 func crc8(cmdBuf []byte) byte {
 	bufLen := len(cmdBuf)
-	glog.V(2).Infoln("bufLen:", bufLen, hex.EncodeToString(cmdBuf))
+	//glog.V(2).Infoln("bufLen:", bufLen, hex.EncodeToString(cmdBuf))
 	CRC8_Table := []byte{
 		0, 94, 188, 226, 97, 63, 221, 131, 194, 156, 126, 32, 163, 253, 31, 65,
 		157, 195, 33, 127, 252, 162, 64, 30, 95, 1, 227, 189, 62, 96, 130, 220,
@@ -1802,13 +1832,13 @@ func crc8(cmdBuf []byte) byte {
 }
 
 type DATAINFO struct {
-	ipstring   string
-	dotime     time.Time
-	labelinfos []LABELINFO
+	Ipstring   string
+	Dotime     time.Time
+	Labelinfos []LABELINFO
 }
 type LABELINFO struct {
-	labelid string
-	rssi    string
+	Labelid string
+	Rssi    string
 }
 
 func dealwithdata(buffer []byte, ipstring string) {
@@ -1831,18 +1861,22 @@ func dealwithdata(buffer []byte, ipstring string) {
 		glog.V(5).Infoln("数据包标签数为小于等于0")
 		return
 	}
+	if len(buffer) != countoflabel*5+9+2 {
+		glog.V(5).Infoln("数据包标签数算出的整个包的长度不符合标准")
+		return
+	}
 	var labelinfo LABELINFO
 	var labelinfos []LABELINFO
 	for i := 0; i < countoflabel; i++ {
-		labelinfo.labelid = hex.EncodeToString(buffer[9+5*i : 9+4+5*i])
-		labelinfo.rssi = hex.EncodeToString(buffer[9+4+5*i : 9+4+5*i+1])
+		labelinfo.Labelid = hex.EncodeToString(buffer[9+5*i : 9+4+5*i])
+		labelinfo.Rssi = hex.EncodeToString(buffer[9+4+5*i : 9+4+5*i+1])
 		labelinfos = append(labelinfos, labelinfo)
 	}
 	var sdatainfo DATAINFO
-	sdatainfo.dotime = time.Now().Local()
-	sdatainfo.ipstring = ipstring
-	sdatainfo.labelinfos = labelinfos
-
+	sdatainfo.Dotime = time.Now().Local()
+	sdatainfo.Ipstring = ipstring
+	sdatainfo.Labelinfos = labelinfos
+	//glog.V(1).Infoln(sdatainfo)
 	cddb := session.DB("data").C("info")
 	err := cddb.Insert(&sdatainfo)
 	if err != nil {
@@ -1850,7 +1884,7 @@ func dealwithdata(buffer []byte, ipstring string) {
 		glog.V(1).Infoln("data插入数据库有问题")
 		return
 	}
-	glog.V(2).Infoln("data插入数据库成功")
+	//glog.V(2).Infoln("data插入数据库成功")
 	makedatainfoout(sdatainfo)
 
 }
@@ -1869,15 +1903,16 @@ type LABELINFOSINGLE struct {
 var labelinfoouts []LABELINFOOUT
 
 func makedatainfoout(datainfo DATAINFO) {
+
 	var labelinfoout LABELINFOOUT
 	var labelinfosingle LABELINFOSINGLE
 	var labelinfosingles []LABELINFOSINGLE
-	for _, value := range datainfo.labelinfos {
-		seq := searchlabelin(value.labelid)
+	for _, value := range datainfo.Labelinfos {
+		seq := searchlabelin(value.Labelid)
 		if seq == -1 {
-			labelinfoout.LabelID = value.labelid
-			labelinfosingle.Ipstring = datainfo.ipstring
-			labelinfosingle.Rssi = value.rssi
+			labelinfoout.LabelID = value.Labelid
+			labelinfosingle.Ipstring = datainfo.Ipstring
+			labelinfosingle.Rssi = value.Rssi
 			labelinfosingle.Dotime = time.Now().Local()
 			labelinfosingles = append(labelinfosingles, labelinfosingle)
 			labelinfoout.LabelSingles = labelinfosingles
@@ -1885,20 +1920,29 @@ func makedatainfoout(datainfo DATAINFO) {
 			labelinfoouts = append(labelinfoouts, labelinfoout)
 		} else {
 			//labelinfoouts[seq].LabelID = value.labelid
+			gotone := 0
 			for index1, value1 := range labelinfoouts[seq].LabelSingles {
-				if value1.Ipstring == datainfo.ipstring {
-					labelinfoouts[seq].LabelSingles[index1].Rssi = value.rssi
+				if value1.Ipstring == datainfo.Ipstring {
+					labelinfoouts[seq].LabelSingles[index1].Rssi = value.Rssi
 					labelinfoouts[seq].LabelSingles[index1].Dotime = time.Now().Local()
-				} else {
-					labelinfosingle.Ipstring = datainfo.ipstring
-					labelinfosingle.Rssi = value.rssi
-					labelinfosingle.Dotime = time.Now().Local()
-					labelinfoouts[seq].LabelSingles = append(labelinfoouts[seq].LabelSingles, labelinfosingle)
+					gotone = 1
+					break
 				}
+			}
+
+			if gotone == 0 {
+
+				labelinfosingle.Ipstring = datainfo.Ipstring
+				labelinfosingle.Rssi = value.Rssi
+				labelinfosingle.Dotime = time.Now().Local()
+
+				labelinfoouts[seq].LabelSingles = append(labelinfoouts[seq].LabelSingles, labelinfosingle)
+
 			}
 
 		}
 	}
+
 }
 func searchlabelin(labelid string) int {
 	for index, value := range labelinfoouts {
