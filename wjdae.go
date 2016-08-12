@@ -1355,7 +1355,7 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bb, err := hex.DecodeString("AA12FFFFFFFFFFFF0000000000000000000055EE")
+	bb, err := hex.DecodeString("AA12FFFFFFFFFFFF00FF000000000000000055EE")
 	if err != nil {
 		glog.V(1).Infoln("hex.DecodeString出错")
 		return
@@ -1364,29 +1364,29 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 	//glog.V(1).Infoln("lenofbb:", lenofbb)
 	bb[1] = 0x15
 	//glog.V(5).Infoln("发送监听启动包:", connstring, "s->", hex.EncodeToString(bb))
-	bb[lenofbb-2] = crc8(bb[0 : lenofbb-2])
+	bb[lenofbb-2] = crc8(bb[1 : lenofbb-2])
 	_, err = conn.Write(bb)
 	if err != nil {
 		glog.V(1).Infoln("发送监听启动包出错")
 		return
 	}
-	glog.V(5).Infoln(connstring, "->", hex.EncodeToString(bb))
+	glog.V(5).Infoln(connstring, "<-", hex.EncodeToString(bb))
 	buffer := make([]byte, 1024)
 	go func() {
 		for {
-			_, err := conn.Read(buffer)
+			nn, err := conn.Read(buffer)
 			if err != nil {
 				glog.V(1).Infoln(conn.RemoteAddr().String(), "读取socket出错: ", err)
 				return
 			}
 
-			bufferstrings := strings.Split(hex.EncodeToString(buffer), "eeaa97")
+			bufferstrings := strings.Split(hex.EncodeToString(buffer[0:nn]), "eeaa97")
 			lenofbufferstrings := len(bufferstrings)
 			var bufferstringwithhead string
 			if lenofbufferstrings == 1 {
 				bufferstringwithhead = bufferstrings[0]
 				bbuf, err := hex.DecodeString(bufferstringwithhead)
-				glog.V(5).Infoln(bufferstringwithhead)
+				glog.V(5).Infoln(conn.RemoteAddr().String(), "->", bufferstringwithhead)
 				if err != nil {
 					continue
 				}
@@ -1839,9 +1839,14 @@ type DATAINFO struct {
 type LABELINFO struct {
 	Labelid string
 	Rssi    string
+	Dotime  time.Time
 }
 
 func dealwithdata(buffer []byte, ipstring string) {
+	if buffer[1] == 0x95 {
+		glog.V(5).Infoln("95数据包")
+		return
+	}
 	lenofbuf := len(buffer)
 	if lenofbuf <= 3 {
 		glog.V(5).Infoln("数据包长度太短，不对")
@@ -1870,6 +1875,7 @@ func dealwithdata(buffer []byte, ipstring string) {
 	for i := 0; i < countoflabel; i++ {
 		labelinfo.Labelid = hex.EncodeToString(buffer[9+5*i : 9+4+5*i])
 		labelinfo.Rssi = hex.EncodeToString(buffer[9+4+5*i : 9+4+5*i+1])
+		labelinfo.Dotime = time.Now().Local()
 		labelinfos = append(labelinfos, labelinfo)
 	}
 	var sdatainfo DATAINFO
