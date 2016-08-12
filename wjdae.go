@@ -1413,7 +1413,7 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 					}
 
 					bbuf, err := hex.DecodeString(bufferstringwithhead)
-					glog.V(5).Infoln(bufferstringwithhead)
+					glog.V(5).Infoln(conn.RemoteAddr().String(), "->", bufferstringwithhead)
 					if err != nil {
 						continue
 					}
