@@ -1,0 +1,39 @@
+<head><title>接口测试页</title>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+<script type="text/javascript" src="jquery-3.1.0.js"></script>
+<script type="text/javascript"> 
+$(document).ready(function(){
+   comm()
+});
+
+function comm(){
+console.log("aaaaa")
+ $.getJSON("/GetTestLabelInfo",function(result){
+    $.each(result, function(i, field){
+      //$("div").append(field + " ");
+	  document.write('<table border="1"> <tr> <th>' +field.LabelID +'</th><th> rssi</th> <th>'+  field.Dotime +'</th></tr>');
+	   $.each(field.LabelSingles, function(i1, field1){
+	    document.write("<tr> <td>"+ field1.Ipstring+"</td><td>"+ field1.Rssi+"</td><td>"+ field1.Dotime+"</td> </tr>");
+	   
+	   });
+	   document.write("</table>");
+    });
+  });
+  document.close();
+  setTimeout("comm()", 1000);
+}
+</script>
+</head>
+<body>
+<table border="1">
+  <tr>
+    <th>Month</th>
+    <th>Savings</th>
+  </tr>
+  <tr>
+    <td>January</td>
+    <td>$100</td>
+  </tr>
+</table>
+</body>
+</html>
