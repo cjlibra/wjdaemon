@@ -1361,16 +1361,16 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lenofbb := len(bb)
-	glog.V(1).Infoln("lenofbb:", lenofbb)
+	//glog.V(1).Infoln("lenofbb:", lenofbb)
 	bb[1] = 0x15
-	glog.V(2).Infoln(connstring, "s->", hex.EncodeToString(bb))
+	//glog.V(5).Infoln("发送监听启动包:", connstring, "s->", hex.EncodeToString(bb))
 	bb[lenofbb-2] = crc8(bb[0 : lenofbb-2])
 	_, err = conn.Write(bb)
 	if err != nil {
 		glog.V(1).Infoln("发送监听启动包出错")
 		return
 	}
-	glog.V(2).Infoln(connstring, "->", hex.EncodeToString(bb))
+	glog.V(5).Infoln(connstring, "->", hex.EncodeToString(bb))
 	buffer := make([]byte, 1024)
 	go func() {
 		for {
@@ -1386,7 +1386,7 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 			if lenofbufferstrings == 1 {
 				bufferstringwithhead = bufferstrings[0]
 				bbuf, err := hex.DecodeString(bufferstringwithhead)
-				glog.V(2).Infoln(bufferstringwithhead)
+				glog.V(5).Infoln(bufferstringwithhead)
 				if err != nil {
 					continue
 				}
@@ -1885,6 +1885,7 @@ func dealwithdata(buffer []byte, ipstring string) {
 		return
 	}
 	//glog.V(2).Infoln("data插入数据库成功")
+
 	makedatainfoout(sdatainfo)
 
 }
