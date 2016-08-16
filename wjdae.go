@@ -1430,6 +1430,7 @@ func RunTestLabelServer(w http.ResponseWriter, r *http.Request) {
 }
 func GetTestLabelInfo(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+
 	//w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 
 	b, err := json.Marshal(labelinfoouts)
@@ -1442,6 +1443,106 @@ func GetTestLabelInfo(w http.ResponseWriter, r *http.Request) {
 	//glog.V(5).Infoln(string(b))
 	w.Write(b)
 
+}
+func GetDataFromDBtoGrid(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	date1 := r.FormValue("date1")
+	date2 := r.FormValue("date2")
+
+	cdata := session.DB("data").C("info")
+	type SINGLELABELINFO struct {
+		Labelid string
+		Rssi    string
+	}
+	type RESULTER struct {
+		Ipstring   string
+		Dotime     time.Time
+		Labelinfos []SINGLELABELINFO
+		//Rssi     string
+	}
+
+	startTime, _ := time.Parse("20060102 15:04:05", date1)
+	startTime = startTime.Add(time.Hour * -8)
+	//fmt.Printf("%s", startTime.UTC()) //20130314 20:00:00 +0000 UTC
+	//startTime = time.Unix(startTime.Unix()-8*3600, 0)
+	//fmt.Printf("%s", startTime.UTC()) //20130314 20:00:00 +0800 UTC
+
+	endTime, _ := time.Parse("20060102 15:04:05", date2)
+	endTime = endTime.Add(time.Hour * -8)
+	//fmt.Printf("%s", endTime.UTC()) //20130314 20:00:00 +0000 UTC
+	//endTime = time.Unix(endTime.Unix()-8*3600, 0)
+	//fmt.Printf("%s", endTime.UTC()) //20130314 20:00:00 +0800 UTC
+	//*****查询多条数据*******
+	//var result RESULTER //存放结果
+	var results []RESULTER
+	filter := bson.M{"dotime": bson.M{"$gt": startTime, "$lt": endTime}, "labelinfos.labelid": "e588fb75"}
+	//outfilter := `{"ipstring":1,"dotime":1,"labelinfos.rssi":1}`
+	cdata.Find(filter).All(&results)
+	var headstring []string
+
+	var alltxt string
+	headstring = append(headstring, "e588fb75")
+	b := startTime
+	var mytimes []time.Time
+	for {
+		mytimes = append(mytimes, b)
+		headstring = append(headstring, strings.Split(b.Add(time.Hour*8).String(), " ")[1])
+		b = b.Add(time.Second * 1)
+		//	glog.V(1).Infoln(b)
+		if b.After(endTime) == true {
+			break
+		}
+	}
+	alltxt = strings.Join(headstring, ",") + "\n"
+	txt1 := ""
+	nn := -99
+	var ipstr string
+	for i := 1; i <= 6; i++ {
+		for _, timevalue := range mytimes {
+
+			ipstr = "192.168.187." + fmt.Sprintf("%d", i)
+			for index, value := range results {
+				nn = -99
+				a := strings.Split(strings.Split(value.Dotime.String(), " ")[1], ".")[0]
+				b := strings.Split(timevalue.Add(time.Hour*8).String(), " ")[1]
+				//fmt.Println(a)
+				//fmt.Println(b + "o")
+				//fmt.Println(a == b)
+				//fmt.Println(value.Ipstring)
+				//fmt.Println(ipstr)
+				//fmt.Println(value.Ipstring == ipstr)
+				if value.Ipstring == ipstr && a == b {
+					nn = index
+					//	fmt.Println(nn)
+					//	fmt.Println("ll")
+					break
+					//txt1 = txt1 + value.Labelinfos[0].Rssi
+					//txt1 = txt1 + ","
+				}
+			}
+			if nn == -99 {
+				txt1 = txt1 + "xx,"
+			} else {
+				txt1 = txt1 + results[nn].Labelinfos[0].Rssi + ","
+			}
+		}
+		txt1 = ipstr + "," + txt1
+		alltxt = alltxt + txt1 + "\n"
+		//fmt.Println(txt1)
+		//fmt.Println(alltxt)
+		txt1 = ""
+	}
+	//glog.V(1).Infoln(headstring)
+	fname := strings.Replace(date1, ":", "-", -1) + "-" + strings.Replace(date2, ":", "-", -1) + ".csv"
+	fmt.Println(fname)
+	ioutil.WriteFile(fname, []byte(alltxt), 0666)
+	/*for iter.Next(&result) {
+
+		results = append(results, result)
+	}*/
+
+	//glog.V(1).Infoln(results)
+	w.Write([]byte("ok"))
 }
 func UploadCmdString(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
@@ -1567,6 +1668,8 @@ func main() {
 	http.HandleFunc("/GetTestLabelInfo", GetTestLabelInfo)
 
 	http.HandleFunc("/RunTestLabelServer", RunTestLabelServer)
+
+	http.HandleFunc("/GetDataFromDBtoGrid", GetDataFromDBtoGrid)
 
 	http.Handle("/", http.StripPrefix("/", http.FileServer(http.Dir("./htmlsrc/"))))
 
