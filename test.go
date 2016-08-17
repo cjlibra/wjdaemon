@@ -81,6 +81,10 @@ func crc8(cmdBuf []byte) byte {
 }
 
 func main() {
+	var n1 time.Duration = 8
+	fmt.Println(n1.Nanoseconds(), time.Second.Nanoseconds())
+	time.Sleep((8 * 1000000000))
+	return
 	//ss := "aa97aaffbc1843ff02e588e6d159e5891991581aee"
 	ss1 := "aa9701e58972ea5a3dee"
 	ss1 = "aa9701e589e6f652e8ee"

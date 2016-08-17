@@ -1448,6 +1448,7 @@ func GetDataFromDBtoGrid(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	date1 := r.FormValue("date1")
 	date2 := r.FormValue("date2")
+	label := r.FormValue("label")
 
 	cdata := session.DB("data").C("info")
 	type SINGLELABELINFO struct {
@@ -1475,13 +1476,13 @@ func GetDataFromDBtoGrid(w http.ResponseWriter, r *http.Request) {
 	//*****查询多条数据*******
 	//var result RESULTER //存放结果
 	var results []RESULTER
-	filter := bson.M{"dotime": bson.M{"$gt": startTime, "$lt": endTime}, "labelinfos.labelid": "e588fb75"}
+	filter := bson.M{"dotime": bson.M{"$gt": startTime, "$lt": endTime}, "labelinfos.labelid": label}
 	//outfilter := `{"ipstring":1,"dotime":1,"labelinfos.rssi":1}`
 	cdata.Find(filter).All(&results)
 	var headstring []string
 
 	var alltxt string
-	headstring = append(headstring, "e588fb75")
+	headstring = append(headstring, label)
 	b := startTime
 	var mytimes []time.Time
 	for {
@@ -1533,7 +1534,7 @@ func GetDataFromDBtoGrid(w http.ResponseWriter, r *http.Request) {
 		txt1 = ""
 	}
 	//glog.V(1).Infoln(headstring)
-	fname := strings.Replace(date1, ":", "-", -1) + "-" + strings.Replace(date2, ":", "-", -1) + ".csv"
+	fname := strings.Replace(date1, ":", "-", -1) + "-" + strings.Replace(date2, ":", "-", -1) + "-" + label + ".csv"
 	fmt.Println(fname)
 	ioutil.WriteFile(fname, []byte(alltxt), 0666)
 	/*for iter.Next(&result) {
