@@ -1714,7 +1714,7 @@ func CheckConnectionInfoAndClearOld() {
 		time.Sleep(time.Minute * 1)
 
 		for idx, value := range linesinfos {
-			if time.Now().Local().Sub(value.HeartInfo.Dotime) > time.Minute*10 {
+			if time.Now().Local().Sub(value.HeartInfo.Dotime) > time.Minute*10 && value.Alive == 1 {
 				linesinfos[idx].Alive = 0
 				linesinfos[idx].Conn.Close()
 				linesinfos[idx].EndDotime = time.Now().Local()
