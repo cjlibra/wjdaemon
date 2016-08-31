@@ -87,6 +87,7 @@ func SocketServer(sockport string) {
 
 		glog.V(2).Infoln(conn.RemoteAddr().String(), "->", "TCP连接成功")
 		go handleConnection(conn)
+
 	}
 
 }
@@ -636,10 +637,12 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 
 	}
 	binFirmSerial := []byte(FirmSerial)
+	bingo := 0
 	for _, value := range updatefirmtasks {
 		if bytes.Equal(value.FirmSerial[:18], binFirmSerial[:18]) != true {
 			continue
 		}
+		bingo = 1
 		copy(stroutupdate.FirmSerial[:18], value.FirmSerial[:6+12])
 		stroutupdate.Procedure = value.Procedure
 		stroutupdate.FirmFileCount = value.FirmFileCount
@@ -647,14 +650,19 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 		stroutupdate.PartPercent = value.PartPercent
 		stroutupdate.WholeChecksum = value.WholeChecksum
 		stroutupdate.DoTime = value.DoTime.Local()
+		break
 
 		//stroutupdates = append(stroutupdates, stroutupdate)
 	}
-
+	if bingo == 0 {
+		glog.V(1).Infoln("此设备序列码没有在升级队列中:", FirmSerial)
+		w.Write([]byte("{status:'1003'}"))
+		return
+	}
 	b, err := json.Marshal(stroutupdate)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题alllinestrs", err)
-		w.Write([]byte("{status:'1001'}"))
+		w.Write([]byte("{status:'1004'}"))
 		return
 	}
 
@@ -2111,7 +2119,9 @@ func handleConnection(conn net.Conn) {
 		conn.Close()
 	}()
 	buffer := make([]byte, 1024)
+
 	for {
+		conn.SetReadDeadline(time.Now().Add(10 * time.Minute))
 		n, err := conn.Read(buffer)
 		if err != nil {
 			glog.V(1).Infoln(conn.RemoteAddr().String(), "连接出错: ", err)

@@ -81,6 +81,18 @@ func crc8(cmdBuf []byte) byte {
 }
 
 func main() {
+	type OUTUPDATE struct {
+		FirmSerial     [18]byte
+		Procedure      int
+		FirmFileCount  int
+		AllFramesCount int
+		PartPercent    int
+		WholeChecksum  byte
+		DoTime         time.Time
+	}
+	var stroutupdate OUTUPDATE
+	fmt.Println(stroutupdate)
+	return
 	az1 := time.Now()
 	//az2, _ := time.Parse("2006-01-02 15:04:05", "2016-08-30 12:00:00")
 	az2, _ := time.ParseInLocation("2006-01-02 15:04:05", "2016-08-30 12:00:00", time.Local)
