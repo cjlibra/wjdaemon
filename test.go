@@ -81,6 +81,16 @@ func crc8(cmdBuf []byte) byte {
 }
 
 func main() {
+	az1 := time.Now()
+	//az2, _ := time.Parse("2006-01-02 15:04:05", "2016-08-30 12:00:00")
+	az2, _ := time.ParseInLocation("2006-01-02 15:04:05", "2016-08-30 12:00:00", time.Local)
+	fmt.Println(az1)
+	fmt.Println(az2)
+	//az2 = az2.Local()
+	//fmt.Println(az2)
+	fmt.Println(az1.Sub(az2).Hours())
+	//fmt.Println(az1.Add(-az2).String())
+	return
 	var n1 time.Duration = 8
 	fmt.Println(n1.Nanoseconds(), time.Second.Nanoseconds())
 	time.Sleep((8 * 1000000000))

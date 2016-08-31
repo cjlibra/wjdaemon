@@ -619,9 +619,27 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 		DoTime         time.Time
 	}
 	var stroutupdate OUTUPDATE
-	var stroutupdates []OUTUPDATE
+	//var stroutupdates []OUTUPDATE
+	r.ParseForm()
 	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
+	FirmSerial := r.FormValue("FirmSerial")
+	if len(r.Form["FirmSerial"]) <= 0 {
+		glog.V(1).Infoln("FirmSerial请求参数缺失")
+		w.Write([]byte("{status:'1001'}"))
+		return
+	}
+	if len(FirmSerial) != 6+12 {
+		glog.V(2).Infoln("警告：FirmSerial请求参数内容长度不准确")
+
+		FirmSerial = fmt.Sprintf("%s", FirmSerial) + "                  "
+		FirmSerial = FirmSerial[:18]
+
+	}
+	binFirmSerial := []byte(FirmSerial)
 	for _, value := range updatefirmtasks {
+		if bytes.Equal(value.FirmSerial[:18], binFirmSerial[:18]) != true {
+			continue
+		}
 		copy(stroutupdate.FirmSerial[:18], value.FirmSerial[:6+12])
 		stroutupdate.Procedure = value.Procedure
 		stroutupdate.FirmFileCount = value.FirmFileCount
@@ -630,10 +648,10 @@ func updatefirmafter(w http.ResponseWriter, r *http.Request) {
 		stroutupdate.WholeChecksum = value.WholeChecksum
 		stroutupdate.DoTime = value.DoTime.Local()
 
-		stroutupdates = append(stroutupdates, stroutupdate)
+		//stroutupdates = append(stroutupdates, stroutupdate)
 	}
 
-	b, err := json.Marshal(stroutupdates)
+	b, err := json.Marshal(stroutupdate)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题alllinestrs", err)
 		w.Write([]byte("{status:'1001'}"))
@@ -1647,6 +1665,7 @@ func main() {
 	c = session.DB("heart").C("info")
 
 	go SocketServer(fmt.Sprintf("%d", *sockport))
+	go CheckConnectionInfoAndClearOld()
 
 	http.HandleFunc("/updatefirmafter", updatefirmafter)
 	http.HandleFunc("/updatefirm", updatefirm)
@@ -1679,6 +1698,20 @@ func main() {
 	if err != nil {
 
 		glog.Info("ListenAndServer: ", err)
+
+	}
+}
+func CheckConnectionInfoAndClearOld() {
+	for {
+		time.Sleep(time.Minute * 1)
+
+		for idx, value := range linesinfos {
+			if time.Now().Local().Sub(value.HeartInfo.Dotime) > time.Minute*10 {
+				linesinfos[idx].Alive = 0
+				linesinfos[idx].Conn.Close()
+				linesinfos[idx].EndDotime = time.Now().Local()
+			}
+		}
 
 	}
 }
@@ -1957,7 +1990,7 @@ func dealwithdata(buffer []byte, ipstring string) {
 		return
 	}
 	if buffer[0] != 0xaa || buffer[lenofbuf-1] != 0xee || buffer[1] != 0x97 {
-		glog.V(5).Infoln("数据包格式不对")
+		glog.V(5).Infoln("数据包格式非0x97数据包")
 		return
 	}
 	tmpcrc8 := crc8(buffer[1 : lenofbuf-2])
@@ -2087,7 +2120,7 @@ func handleConnection(conn net.Conn) {
 
 		glog.V(5).Infoln(conn.RemoteAddr().String(), "->", hex.EncodeToString(buffer[:n]), n)
 
-		dealwithdata(buffer, conn.RemoteAddr().String())
+		//dealwithdata(buffer, conn.RemoteAddr().String())
 
 		ret := isfoundserialinpool(buffer)
 		if ret == -1 {
