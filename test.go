@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"net"
 	//w "h"
 	"math/big"
 	"strconv"
@@ -81,6 +82,38 @@ func crc8(cmdBuf []byte) byte {
 }
 
 func main() {
+	sockport := "6767"
+	netListen, err := net.Listen("tcp", ":"+sockport)
+	if err != nil {
+		glog.V(1).Infoln("Listen出错，可能端口占用：", sockport)
+		return
+	}
+
+	defer netListen.Close()
+
+	glog.Infoln("后台服务启动于端口 " + sockport)
+
+	conn, err := netListen.Accept()
+	if err != nil {
+		glog.Infoln("netListen.Accept() err ")
+		return
+	}
+
+	glog.Infoln(conn.RemoteAddr().String(), "->", "TCP连接成功")
+	buffer := make([]byte, 1024)
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	for {
+
+		n, err := conn.Read(buffer)
+		//	conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			glog.Infoln(conn.RemoteAddr().String(), "连接出错: ", err)
+			continue
+		}
+		glog.Infoln("this is：", buffer[:n], n)
+	}
+
+	return
 	type OUTUPDATE struct {
 		FirmSerial     [18]byte
 		Procedure      int

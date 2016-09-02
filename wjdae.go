@@ -1186,7 +1186,45 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 	glog.V(5).Infoln(retstr)
 	w.Write([]byte(retstr))
 }
+func GetCustomInfo(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	FirmSerial := r.FormValue("FirmSerial")
 
+	if len(r.Form["FirmSerial"]) <= 0 {
+		glog.V(1).Infoln("SetCustomInfo请求参数缺失")
+		w.Write([]byte("{status:1001}"))
+		return
+	}
+	if len(FirmSerial) <= 0 {
+		glog.V(1).Infoln("SetCustomInfo请求参数内容不准确")
+		w.Write([]byte("{status:1002}"))
+		return
+	}
+	type CUSTOMINFO struct {
+		FirmSerial string
+		CustomInfo string
+		TheTime    time.Time
+	}
+	var cinfo CUSTOMINFO
+	cdb := session.DB("custom").C("info")
+	err := cdb.Find(bson.M{"firmserial": FirmSerial}).One(&cinfo)
+	if err != nil {
+		glog.V(1).Infoln("custom数据库内找不到数据by:", FirmSerial)
+		w.Write([]byte("{status:1005}"))
+		return
+	}
+
+	b, err := json.Marshal(cinfo)
+	if err != nil {
+		glog.V(1).Infoln("json编码问题cinfo", err)
+		w.Write([]byte("{status:1006}"))
+		return
+	}
+
+	//glog.V(5).Infoln(b)
+	w.Write(b)
+
+}
 func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 	type CUSTOMINFO struct {
 		FirmSerial string
@@ -1688,6 +1726,8 @@ func main() {
 	http.HandleFunc("/GetSearchDevicesbyheart", GetSearchDevicesbyheart)
 
 	http.HandleFunc("/SetCustomInfo", SetCustomInfo)
+	http.HandleFunc("/GetCustomInfo", GetCustomInfo)
+
 	http.HandleFunc("/UploadFiletoServer", UploadFiletoServer)
 	http.HandleFunc("/GetUploadFileOnServerInfo", GetUploadFileOnServerInfo)
 	http.HandleFunc("/DelUploadFileOnServerInfo", DelUploadFileOnServerInfo)
