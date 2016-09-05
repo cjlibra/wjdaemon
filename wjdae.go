@@ -1204,6 +1204,7 @@ func GetCustomInfo(w http.ResponseWriter, r *http.Request) {
 		FirmSerial string
 		CustomInfo string
 		TheTime    time.Time
+		Status     int
 	}
 	var cinfo CUSTOMINFO
 	cdb := session.DB("custom").C("info")
@@ -1213,7 +1214,7 @@ func GetCustomInfo(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("{status:1005}"))
 		return
 	}
-
+	cinfo.Status = 0
 	b, err := json.Marshal(cinfo)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题cinfo", err)
