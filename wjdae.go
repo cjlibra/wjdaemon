@@ -1188,6 +1188,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 }
 func GetCustomInfo(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	FirmSerial := r.FormValue("FirmSerial")
 
 	if len(r.Form["FirmSerial"]) <= 0 {
@@ -1233,6 +1234,7 @@ func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 		TheTime    time.Time
 	}
 	r.ParseForm()
+	w.Header().Add("Access-Control-Allow-Origin", "*") //保证跨域的ajax
 	FirmSerial := r.FormValue("FirmSerial")
 	CustomInfo := r.FormValue("CustomInfo")
 
