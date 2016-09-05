@@ -844,12 +844,12 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	Callfunc := r.FormValue("Callback")
 	if len(r.Form["DeviceNO"]) <= 0 || len(r.Form["Page"]) <= 0 || len(r.Form["Callback"]) <= 0 {
 		glog.V(1).Infoln("GetSearchDevices请求参数缺失")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1001}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1001'}")))
 		return
 	}
 	if len(FirmSerial) <= 0 || len(Page) <= 0 || len(Callfunc) <= 0 {
 		glog.V(1).Infoln("GetSearchDevices请求参数内容不准确")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1002}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1002'}")))
 		return
 	}
 	var sdbackret SDBACK
@@ -858,7 +858,7 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	var devicestatusespage []CONNINFO
 	if len(linesinfos) <= 0 {
 		glog.V(1).Infoln("linesinfos为空，表示没有设备连接上来")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1003}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1003'}")))
 		return
 	}
 	flagnoget := 0
@@ -878,7 +878,7 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	if flagnoget == 0 {
 		glog.V(1).Infoln("没有找到该设备，表示该设备没有连接上来")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1003}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1003'}")))
 		return
 	}
 	pagesfromds := 0
@@ -892,12 +892,12 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	tmpa, err := strconv.Atoi(Page)
 	if err != nil {
 		glog.V(1).Infoln("Page非数字")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1006}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1006'}")))
 		return
 	}
 	if tmpa <= 0 {
 		glog.V(1).Infoln("Page不能小于等于0")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1000}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1000'}")))
 		return
 	}
 
@@ -922,7 +922,7 @@ func GetSearchDevices(w http.ResponseWriter, r *http.Request) {
 	b, err := json.Marshal(sdbackret)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题sdbackret", err)
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1005}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1005'}")))
 		return
 	}
 
@@ -955,12 +955,12 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 
 	if len(r.Form["DeviceNO"]) <= 0 || len(r.Form["Page"]) <= 0 || len(r.Form["Callback"]) <= 0 {
 		glog.V(1).Infoln("GetSearchDevices请求参数缺失")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1001}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1001'}")))
 		return
 	}
 	if len(FirmSerial) <= 0 || len(Page) <= 0 || len(Callfunc) <= 0 {
 		glog.V(1).Infoln("GetSearchDevices请求参数内容不准确")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1002}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1002'}")))
 		return
 	}
 	var sdbackret SDBACK
@@ -969,7 +969,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 	var devicestatusespage []CONNINFO
 	if len(linesinfos) <= 0 {
 		glog.V(1).Infoln("linesinfos为空，表示没有设备连接上来")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1003}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1003'}")))
 		return
 	}
 	flagnoget := 0
@@ -993,7 +993,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				byteb, err := hex.DecodeString(SConnStatus)
 				if err != nil {
 					glog.V(1).Infoln("ConnStatus输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1004}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1004'}")))
 					return
 				}
 				a1 = (lineinfo.HeartInfo.ConnStatus == byteb[0])
@@ -1011,7 +1011,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				the_time, err := time.Parse("2006-01-02 15:04:05", SDotime)
 				if err != nil {
 					glog.V(1).Infoln("Dotime输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1005}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1005'}")))
 					return
 				}
 				a3 = lineinfo.HeartInfo.Dotime.Before(the_time)
@@ -1022,7 +1022,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				byteb, err := hex.DecodeString(SFirmVersion)
 				if err != nil {
 					glog.V(1).Infoln("FirmVersion输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1006}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1006'}")))
 					return
 				}
 				a4 = (lineinfo.HeartInfo.FirmVersion == string(byteb))
@@ -1034,7 +1034,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				byteb, err := hex.DecodeString(SSoftVersion)
 				if err != nil {
 					glog.V(1).Infoln("SoftVersion输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1007}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1007'}")))
 					return
 				}
 				a5 = lineinfo.HeartInfo.SoftVersion == string(byteb)
@@ -1046,13 +1046,13 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				inta, err := strconv.Atoi(SInsideAntena0)
 				if err != nil {
 					glog.V(1).Infoln("InsideAntena0输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1008}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1008'}")))
 					return
 				}
 				intb, err := strconv.Atoi(SInsideAntena1)
 				if err != nil {
 					glog.V(1).Infoln("InsideAntena1输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1009}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1009'}")))
 					return
 				}
 				a6 = int(lineinfo.HeartInfo.InsideAntena) >= inta && int(lineinfo.HeartInfo.InsideAntena) <= intb
@@ -1064,13 +1064,13 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				inta, err := strconv.Atoi(SOutsideAntena0)
 				if err != nil {
 					glog.V(1).Infoln("OutsideAntena0输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1010}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1010'}")))
 					return
 				}
 				intb, err := strconv.Atoi(SOutsideAntena1)
 				if err != nil {
 					glog.V(1).Infoln("OutsideAntena1输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1011}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1011'}")))
 					return
 				}
 				a7 = int(lineinfo.HeartInfo.OutsideAntena) >= inta && int(lineinfo.HeartInfo.OutsideAntena) <= intb
@@ -1088,7 +1088,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				byteb, err := hex.DecodeString(SReadWriterStatus)
 				if err != nil {
 					glog.V(1).Infoln("ReadWriterStatus输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1012}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1012'}")))
 					return
 				}
 				a9 = lineinfo.HeartInfo.ReadWriterStatus == byteb[0]
@@ -1100,7 +1100,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				byteb, err := hex.DecodeString(SSysEnergy)
 				if err != nil {
 					glog.V(1).Infoln("SysEnergy输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1013}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1013'}")))
 					return
 				}
 				a10 = lineinfo.HeartInfo.SysEnergy == byteb[0]
@@ -1111,7 +1111,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 				byteb, err := hex.DecodeString(SServerIpPort)
 				if err != nil {
 					glog.V(1).Infoln("ServerIpPort输入格式有误")
-					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1014}")))
+					w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1014'}")))
 					return
 				}
 				a11 = lineinfo.HeartInfo.ServerIpPort == string(byteb)
@@ -1134,7 +1134,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 	}
 	if flagnoget == 0 {
 		glog.V(1).Infoln("没有找到该设备，表示该设备没有连接上来")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1023}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1023'}")))
 		return
 	}
 	pagesfromds := 0
@@ -1148,12 +1148,12 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 	tmpa, err := strconv.Atoi(Page)
 	if err != nil {
 		glog.V(1).Infoln("Page非数字")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1026}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1026'}")))
 		return
 	}
 	if tmpa <= 0 {
 		glog.V(1).Infoln("Page不能小于等于0")
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1020}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1020'}")))
 		return
 	}
 
@@ -1178,7 +1178,7 @@ func GetSearchDevicesbyheart(w http.ResponseWriter, r *http.Request) {
 	b, err := json.Marshal(sdbackret)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题sdbackret", err)
-		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:1025}")))
+		w.Write([]byte(fmt.Sprintf("%s(%s);", Callfunc, "{status:'1025'}")))
 		return
 	}
 
@@ -1193,33 +1193,33 @@ func GetCustomInfo(w http.ResponseWriter, r *http.Request) {
 
 	if len(r.Form["FirmSerial"]) <= 0 {
 		glog.V(1).Infoln("SetCustomInfo请求参数缺失")
-		w.Write([]byte("{status:1001}"))
+		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 	if len(FirmSerial) <= 0 {
 		glog.V(1).Infoln("SetCustomInfo请求参数内容不准确")
-		w.Write([]byte("{status:1002}"))
+		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	type CUSTOMINFO struct {
 		FirmSerial string
 		CustomInfo string
 		TheTime    time.Time
-		Status     int
+		Status     string
 	}
 	var cinfo CUSTOMINFO
 	cdb := session.DB("custom").C("info")
 	err := cdb.Find(bson.M{"firmserial": FirmSerial}).One(&cinfo)
 	if err != nil {
 		glog.V(1).Infoln("custom数据库内找不到数据by:", FirmSerial)
-		w.Write([]byte("{status:1005}"))
+		w.Write([]byte("{status:'1005'}"))
 		return
 	}
-	cinfo.Status = 0
+	cinfo.Status = "0"
 	b, err := json.Marshal(cinfo)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题cinfo", err)
-		w.Write([]byte("{status:1006}"))
+		w.Write([]byte("{status:'1006'}"))
 		return
 	}
 
@@ -1240,12 +1240,12 @@ func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 
 	if len(r.Form["FirmSerial"]) <= 0 || len(r.Form["CustomInfo"]) <= 0 {
 		glog.V(1).Infoln("SetCustomInfo请求参数缺失")
-		w.Write([]byte("{status:1001}"))
+		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 	if len(FirmSerial) <= 0 {
 		glog.V(1).Infoln("SetCustomInfo请求参数内容不准确")
-		w.Write([]byte("{status:1002}"))
+		w.Write([]byte("{status:'1002'}"))
 		return
 	}
 	cdb := session.DB("custom").C("info")
@@ -1263,7 +1263,7 @@ func SetCustomInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	glog.V(2).Infoln("SetCustomInfo成功")
-	w.Write([]byte("{status:0}"))
+	w.Write([]byte("{status:'0'}"))
 }
 
 func UploadFiletoServer(w http.ResponseWriter, r *http.Request) {
@@ -1336,7 +1336,7 @@ func UploadFiletoServer(w http.ResponseWriter, r *http.Request) {
 	cupload.Insert(&Firmfileinfo)
 
 	glog.V(2).Infoln("上传文件成功：", FirmFileOnServerDir)
-	w.Write([]byte("{status:0}"))
+	w.Write([]byte("{status:'0'}"))
 
 }
 
@@ -1360,7 +1360,7 @@ func GetUploadFileOnServerInfo(w http.ResponseWriter, r *http.Request) {
 	b, err := json.Marshal(firmfileInfos)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题firmfileInfos", err)
-		w.Write([]byte("{status:1001}"))
+		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 
@@ -1503,7 +1503,7 @@ func GetTestLabelInfo(w http.ResponseWriter, r *http.Request) {
 	b, err := json.Marshal(labelinfoouts)
 	if err != nil {
 		glog.V(1).Infoln("json编码问题labelinfoouts", err)
-		w.Write([]byte("{status:1001}"))
+		w.Write([]byte("{status:'1001'}"))
 		return
 	}
 
